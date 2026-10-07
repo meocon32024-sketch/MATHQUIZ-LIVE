@@ -387,7 +387,7 @@
   <script>
     let state = {
       apiKey: localStorage.getItem('GEMINI_API_KEY') || '',
-      detectedModel: localStorage.getItem('GEMINI_DETECTED_MODEL') || 'gemini-2.5-flash',
+      detectedModel: localStorage.getItem('GEMINI_DETECTED_MODEL') || '',
       roomPin: Math.floor(100000 + Math.random() * 900000).toString(),
       currentQuestionIndex: 0,
       timer: 20,
@@ -406,7 +406,7 @@
       if (state.apiKey) {
         const keyInput = document.getElementById('gemini-key');
         if (keyInput) keyInput.value = state.apiKey;
-        showDetectedModelBadge(state.detectedModel);
+        if (state.detectedModel) showDetectedModelBadge(state.detectedModel);
       }
       
       if (window.location.protocol === 'file:') {
@@ -443,7 +443,7 @@
       const box = document.getElementById('detected-model-box');
       const nameEl = document.getElementById('detected-model-name');
       if (box && nameEl) {
-        nameEl.innerText = modelName;
+        nameEl.innerText = modelName.replace(/^models\//, '');
         box.classList.remove('hidden');
       }
     }
@@ -496,41 +496,39 @@
       renderMath();
     }
 
-    // --- TỰ ĐỘNG QUÉT & LẤY MÔ HÌNH HỢP LỆ (DÒ TÌM QUA LISTMODELS) ---
+    // --- TỰ ĐỘNG DÒ TÌM MÔ HÌNH QUA ListModels CỦA GOOGLE ---
     async function discoverActiveModel(key) {
       try {
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
         const data = await res.json();
         if (data.models && Array.isArray(data.models)) {
-          const availableModels = data.models
-            .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-            .map(m => m.name.replace(/^models\//, ''));
-
+          // Lọc ra các model hỗ trợ generateContent
+          const usable = data.models.filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'));
+          
           // Danh sách ưu tiên theo chuẩn mới nhất của Google
-          const priorityList = [
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-flash-latest',
-            'gemini-2.5-pro',
-            'gemini-2.0-flash-001',
-            'gemini-1.5-flash-latest',
-            'gemini-1.5-pro'
+          const preferredNames = [
+            'models/gemini-2.5-flash',
+            'models/gemini-2.0-flash',
+            'models/gemini-flash-latest',
+            'models/gemini-2.5-pro',
+            'models/gemini-2.0-flash-001'
           ];
 
-          for (const candidate of priorityList) {
-            if (availableModels.includes(candidate)) {
-              return candidate;
-            }
+          for (const p of preferredNames) {
+            const found = usable.find(m => m.name === p);
+            if (found) return found.name;
           }
 
-          if (availableModels.length > 0) {
-            return availableModels[0];
-          }
+          // Hoặc bất kỳ model nào có chữ flash
+          const anyFlash = usable.find(m => m.name.includes('flash'));
+          if (anyFlash) return anyFlash.name;
+
+          if (usable.length > 0) return usable[0].name;
         }
       } catch (err) {
-        console.warn("Không thể gọi ListModels, chuyển sang mô hình mặc định", err);
+        console.warn("Không thể gọi ListModels, dùng mặc định:", err);
       }
-      return 'gemini-2.5-flash';
+      return 'models/gemini-2.5-flash';
     }
 
     // --- KIỂM TRA & LƯU KHÓA GEMINI API ---
@@ -553,17 +551,15 @@
       btn.disabled = true;
 
       try {
-        // Tự động tìm mô hình khả dụng nhất
         const activeModel = await discoverActiveModel(key);
         state.detectedModel = activeModel;
         localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
 
-        // Gửi thử yêu cầu kiểm tra với mô hình vừa tìm được
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: "Trả lời ngắn: OK" }] }] })
+          body: JSON.stringify({ contents: [{ parts: [{ text: "Hãy trả lời đúng một chữ: OK" }] }] })
         });
         const data = await res.json();
         
@@ -574,9 +570,9 @@
         state.apiKey = key;
         localStorage.setItem('GEMINI_API_KEY', key);
         showDetectedModelBadge(activeModel);
-        showToast(`✅ Tuyệt vời! Đã kết nối thành công với ${activeModel}`, "success");
+        showToast(`✅ Đã kết nối thành công với ${activeModel.replace(/^models\//, '')}!`, "success");
       } catch (err) {
-        showToast("❌ Khóa API không đúng hoặc bị lỗi: " + err.message, "error");
+        showToast("❌ " + err.message, "error");
       } finally {
         btn.innerText = "🔍 Kiểm Tra Khóa";
         btn.disabled = false;
@@ -617,11 +613,16 @@ YÊU CẦU BẮT BUỘC:
 ]`;
 
       try {
-        // Tự động tìm mô hình tốt nhất
-        let activeModel = state.detectedModel || await discoverActiveModel(key);
+        // Luôn tự động tìm mô hình khả dụng thực tế
+        let activeModel = state.detectedModel;
+        if (!activeModel || activeModel.includes('1.5-flash')) {
+          activeModel = await discoverActiveModel(key);
+          state.detectedModel = activeModel;
+          localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
+        }
         showDetectedModelBadge(activeModel);
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
