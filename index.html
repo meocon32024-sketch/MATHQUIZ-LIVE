@@ -238,9 +238,9 @@
             </button>
           </div>
         </div>
-        <div id="detected-model-box" class="mt-3 hidden text-[11px] text-emerald-400 font-medium flex items-center space-x-1.5">
+        <div id="detected-model-box" class="mt-3 text-[11px] text-emerald-400 font-medium flex items-center space-x-1.5">
           <span>✨</span>
-          <span>Mô hình đang kết nối: <b id="detected-model-name" class="font-mono text-white underline">gemini-2.5-flash</b></span>
+          <span>Mô hình đang kết nối: <b id="detected-model-name" class="font-mono text-white underline">gemini-3.8-flash</b></span>
         </div>
       </div>
 
@@ -385,9 +385,16 @@
 
   <!-- JAVASCRIPT LOGIC -->
   <script>
+    // Chuẩn hóa model: Dọn dẹp model cũ trong localStorage nếu có
+    let savedModel = localStorage.getItem('GEMINI_DETECTED_MODEL');
+    if (!savedModel || savedModel.includes('1.5') || savedModel.includes('2.5')) {
+      savedModel = 'models/gemini-3.8-flash';
+      localStorage.setItem('GEMINI_DETECTED_MODEL', savedModel);
+    }
+
     let state = {
       apiKey: localStorage.getItem('GEMINI_API_KEY') || '',
-      detectedModel: localStorage.getItem('GEMINI_DETECTED_MODEL') || '',
+      detectedModel: savedModel,
       roomPin: Math.floor(100000 + Math.random() * 900000).toString(),
       currentQuestionIndex: 0,
       timer: 20,
@@ -406,8 +413,8 @@
       if (state.apiKey) {
         const keyInput = document.getElementById('gemini-key');
         if (keyInput) keyInput.value = state.apiKey;
-        if (state.detectedModel) showDetectedModelBadge(state.detectedModel);
       }
+      showDetectedModelBadge(state.detectedModel);
       
       if (window.location.protocol === 'file:') {
         document.getElementById('local-file-warning').classList.remove('hidden');
@@ -496,39 +503,16 @@
       renderMath();
     }
 
-    // --- TỰ ĐỘNG DÒ TÌM MÔ HÌNH QUA ListModels CỦA GOOGLE ---
-    async function discoverActiveModel(key) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
-        const data = await res.json();
-        if (data.models && Array.isArray(data.models)) {
-          // Lọc ra các model hỗ trợ generateContent
-          const usable = data.models.filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'));
-          
-          // Danh sách ưu tiên theo chuẩn mới nhất của Google
-          const preferredNames = [
-            'models/gemini-2.5-flash',
-            'models/gemini-2.0-flash',
-            'models/gemini-flash-latest',
-            'models/gemini-2.5-pro',
-            'models/gemini-2.0-flash-001'
-          ];
-
-          for (const p of preferredNames) {
-            const found = usable.find(m => m.name === p);
-            if (found) return found.name;
-          }
-
-          // Hoặc bất kỳ model nào có chữ flash
-          const anyFlash = usable.find(m => m.name.includes('flash'));
-          if (anyFlash) return anyFlash.name;
-
-          if (usable.length > 0) return usable[0].name;
-        }
-      } catch (err) {
-        console.warn("Không thể gọi ListModels, dùng mặc định:", err);
-      }
-      return 'models/gemini-2.5-flash';
+    // --- GỌI API GEMINI (HỖ TRỢ TỰ ĐỘNG THÍCH ỨNG MODEL MỚI) ---
+    async function callGemini(key, modelName, bodyObj) {
+      const fullModel = modelName.startsWith('models/') ? modelName : 'models/' + modelName;
+      const url = `https://generativelanguage.googleapis.com/v1beta/${fullModel}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyObj)
+      });
+      return await res.json();
     }
 
     // --- KIỂM TRA & LƯU KHÓA GEMINI API ---
@@ -547,22 +531,28 @@
       if (!key) return showToast("Vui lòng dán mã API Key để kiểm tra!", "error");
 
       const btn = document.getElementById('btn-test-key');
-      btn.innerText = "⏳ Đang quét mô hình...";
+      btn.innerText = "⏳ Đang kiểm tra...";
       btn.disabled = true;
 
       try {
-        const activeModel = await discoverActiveModel(key);
-        state.detectedModel = activeModel;
-        localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
-
-        const url = `https://generativelanguage.googleapis.com/v1beta/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: "Hãy trả lời đúng một chữ: OK" }] }] })
+        let activeModel = state.detectedModel || 'models/gemini-3.8-flash';
+        let data = await callGemini(key, activeModel, {
+          contents: [{ parts: [{ text: "Trả lời ngắn: OK" }] }]
         });
-        const data = await res.json();
-        
+
+        // Nếu Google gợi ý model khác, tự động áp dụng ngay
+        if (data.error && data.error.message) {
+          const match = data.error.message.match(/use\s+(models\/[a-zA-Z0-9\.\-_]+)/i);
+          if (match) {
+            activeModel = match[1];
+            state.detectedModel = activeModel;
+            localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
+            data = await callGemini(key, activeModel, {
+              contents: [{ parts: [{ text: "Trả lời ngắn: OK" }] }]
+            });
+          }
+        }
+
         if (data.error) {
           throw new Error(data.error.message || "Khóa không hợp lệ");
         }
@@ -570,7 +560,7 @@
         state.apiKey = key;
         localStorage.setItem('GEMINI_API_KEY', key);
         showDetectedModelBadge(activeModel);
-        showToast(`✅ Đã kết nối thành công với ${activeModel.replace(/^models\//, '')}!`, "success");
+        showToast(`✅ Tuyệt vời! Đã kết nối thành công với ${activeModel.replace(/^models\//, '')}!`, "success");
       } catch (err) {
         showToast("❌ " + err.message, "error");
       } finally {
@@ -612,30 +602,30 @@ YÊU CẦU BẮT BUỘC:
   }
 ]`;
 
-      try {
-        // Luôn tự động tìm mô hình khả dụng thực tế
-        let activeModel = state.detectedModel;
-        if (!activeModel || activeModel.includes('1.5-flash')) {
-          activeModel = await discoverActiveModel(key);
-          state.detectedModel = activeModel;
-          localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
+      const requestBody = {
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig: {
+          temperature: 0.7,
+          responseMimeType: "application/json"
         }
-        showDetectedModelBadge(activeModel);
+      };
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptText }] }],
-            generationConfig: {
-              temperature: 0.7,
-              responseMimeType: "application/json"
-            }
-          })
-        });
+      try {
+        let activeModel = state.detectedModel || 'models/gemini-3.8-flash';
+        let data = await callGemini(key, activeModel, requestBody);
 
-        const data = await response.json();
+        // Bắt lỗi và tự động thích ứng với model mới nếu Google chỉ định
+        if (data.error && data.error.message) {
+          const match = data.error.message.match(/use\s+(models\/[a-zA-Z0-9\.\-_]+)/i);
+          if (match) {
+            activeModel = match[1];
+            state.detectedModel = activeModel;
+            localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
+            showDetectedModelBadge(activeModel);
+            // Gửi lại yêu cầu ngay với model mới
+            data = await callGemini(key, activeModel, requestBody);
+          }
+        }
 
         if (data.error) {
           const code = data.error.code || 400;
@@ -684,7 +674,7 @@ YÊU CẦU BẮT BUỘC:
         if (addedCount > 0) {
           renderBankList();
           renderMath();
-          showToast(`🎉 Đã tạo thành công ${addedCount} câu hỏi Toán THPT!`, "success");
+          showToast(`🎉 Đã tạo thành công ${addedCount} câu hỏi Toán THPT bằng ${activeModel.replace(/^models\//, '')}!`, "success");
         } else {
           throw new Error("Không tìm thấy câu hỏi hợp lệ trong kết quả.");
         }
