@@ -238,6 +238,10 @@
             </button>
           </div>
         </div>
+        <div id="detected-model-box" class="mt-3 hidden text-[11px] text-emerald-400 font-medium flex items-center space-x-1.5">
+          <span>✨</span>
+          <span>Mô hình đang kết nối: <b id="detected-model-name" class="font-mono text-white underline">gemini-2.5-flash</b></span>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -383,6 +387,7 @@
   <script>
     let state = {
       apiKey: localStorage.getItem('GEMINI_API_KEY') || '',
+      detectedModel: localStorage.getItem('GEMINI_DETECTED_MODEL') || 'gemini-2.5-flash',
       roomPin: Math.floor(100000 + Math.random() * 900000).toString(),
       currentQuestionIndex: 0,
       timer: 20,
@@ -401,6 +406,7 @@
       if (state.apiKey) {
         const keyInput = document.getElementById('gemini-key');
         if (keyInput) keyInput.value = state.apiKey;
+        showDetectedModelBadge(state.detectedModel);
       }
       
       if (window.location.protocol === 'file:') {
@@ -409,8 +415,6 @@
       }
 
       initMqtt();
-
-      // Nạp sẵn câu hỏi mẫu khi khởi động
       loadSampleQuestions();
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -434,6 +438,15 @@
       renderMath();
       bus.onmessage = (event) => handleIncomingMessage(event.data);
     });
+
+    function showDetectedModelBadge(modelName) {
+      const box = document.getElementById('detected-model-box');
+      const nameEl = document.getElementById('detected-model-name');
+      if (box && nameEl) {
+        nameEl.innerText = modelName;
+        box.classList.remove('hidden');
+      }
+    }
 
     // --- BỘ CÂU HỎI MẪU CHUẨN GDPT 2018 ---
     function loadSampleQuestions() {
@@ -483,150 +496,51 @@
       renderMath();
     }
 
-    // --- KẾT NỐI REALTIME MQTT ---
-    function initMqtt() {
+    // --- TỰ ĐỘNG QUÉT & LẤY MÔ HÌNH HỢP LỆ (DÒ TÌM QUA LISTMODELS) ---
+    async function discoverActiveModel(key) {
       try {
-        const broker = 'wss://broker.emqx.io:8084/mqtt';
-        mqttClient = mqtt.connect(broker, {
-          clientId: 'mq_' + Math.random().toString(16).substr(2, 8),
-          clean: true,
-          connectTimeout: 5000,
-          reconnectPeriod: 3000
-        });
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+        const data = await res.json();
+        if (data.models && Array.isArray(data.models)) {
+          const availableModels = data.models
+            .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+            .map(m => m.name.replace(/^models\//, ''));
 
-        mqttClient.on('connect', () => {
-          const badge = document.getElementById('cloud-badge');
-          if (badge) {
-            badge.className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1";
-            badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Đám mây Online</span>';
-          }
-          if (state.roomPin) {
-            mqttClient.subscribe(`mathquiz/v1/room_${state.roomPin}/#`);
-          }
-        });
+          // Danh sách ưu tiên theo chuẩn mới nhất của Google
+          const priorityList = [
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+            'gemini-flash-latest',
+            'gemini-2.5-pro',
+            'gemini-2.0-flash-001',
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-pro'
+          ];
 
-        mqttClient.on('message', (topic, payload) => {
-          try {
-            const data = JSON.parse(payload.toString());
-            handleIncomingMessage(data);
-          } catch(e) {}
-        });
-
-        mqttClient.on('error', () => {
-          const badge = document.getElementById('cloud-badge');
-          if (badge) {
-            badge.className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-950 text-amber-400 border border-amber-800 flex items-center space-x-1";
-            badge.innerHTML = '<span>🟠 Chế độ Nội Bộ</span>';
+          for (const candidate of priorityList) {
+            if (availableModels.includes(candidate)) {
+              return candidate;
+            }
           }
-        });
+
+          if (availableModels.length > 0) {
+            return availableModels[0];
+          }
+        }
       } catch (err) {
-        console.warn("MQTT offline, fallback BroadcastChannel");
+        console.warn("Không thể gọi ListModels, chuyển sang mô hình mặc định", err);
       }
+      return 'gemini-2.5-flash';
     }
 
-    function broadcastMsg(msg) {
-      if (mqttClient && mqttClient.connected) {
-        const targetPin = msg.roomPin || state.roomPin || myStudentData.roomPin;
-        if (targetPin) {
-          mqttClient.publish(`mathquiz/v1/room_${targetPin}/data`, JSON.stringify(msg));
-        }
-      }
-      bus.postMessage(msg);
-    }
-
-    function handleIncomingMessage(msg) {
-      if (!msg || !msg.type) return;
-
-      if (msg.type === 'STUDENT_JOIN') {
-        if (msg.roomPin === state.roomPin) {
-          if (!state.students.find(s => s.name === msg.student.name)) {
-            state.students.push(msg.student);
-            updateStudentLobbyUI();
-            showToast(`Học sinh "${msg.student.name}" đã vào phòng!`, "success");
-          }
-        }
-      }
-      else if (msg.type === 'STUDENT_ANSWER') {
-        const target = state.students.find(s => s.name === msg.studentName);
-        if (target) {
-          target.answeredCurrent = true;
-          if (msg.isCorrect) {
-            target.score = (target.score || 0) + msg.points;
-            target.correctCount = (target.correctCount || 0) + 1;
-          }
-          updateAnsweredStats();
-        }
-      }
-      else if (msg.type === 'GAME_STARTED' || msg.type === 'NEW_QUESTION') {
-        myStudentData.hasAnswered = false;
-        document.getElementById('stu-waiting-view').classList.add('hidden');
-        document.getElementById('stu-submitted-view').classList.add('hidden');
-        document.getElementById('stu-answering-view').classList.remove('hidden');
-      }
-      else if (msg.type === 'TIMER_TICK') {
-        const tBox = document.getElementById('stu-q-timer');
-        if (tBox) tBox.innerText = `${msg.timer}s`;
-      }
-    }
-
-    // --- HỌC SINH THAM GIA & TRẢ LỜI ---
-    function studentJoinRoom() {
-      const pin = document.getElementById('stu-input-pin').value.trim();
-      const name = document.getElementById('stu-input-name').value.trim();
-
-      if (!name) return showToast("Vui lòng nhập họ và tên của em!", "error");
-      if (!pin || pin.length < 5) return showToast("Vui lòng nhập mã PIN hợp lệ!", "error");
-
-      myStudentData.name = name;
-      myStudentData.roomPin = pin;
-      document.getElementById('stu-display-name').innerText = name;
-      document.getElementById('stu-login-view').classList.add('hidden');
-      document.getElementById('stu-waiting-view').classList.remove('hidden');
-
-      if (mqttClient && mqttClient.connected) {
-        mqttClient.subscribe(`mathquiz/v1/room_${pin}/#`);
-      }
-
-      broadcastMsg({
-        type: 'STUDENT_JOIN',
-        roomPin: pin,
-        student: { id: myStudentData.id, name: name, score: 0, correctCount: 0 }
-      });
-
-      showToast("Đã vào phòng thi đấu!", "success");
-    }
-
-    function studentSubmitAnswer(chosen) {
-      if (myStudentData.hasAnswered) return;
-      myStudentData.hasAnswered = true;
-
-      const currentQ = state.activeQuiz[state.currentQuestionIndex];
-      const isCorrect = currentQ && currentQ.correct === chosen;
-      const pointsEarned = isCorrect ? Math.round(500 + (state.timer / 20) * 500) : 0;
-
-      if (isCorrect) myStudentData.score += pointsEarned;
-      document.getElementById('stu-score').innerText = myStudentData.score;
-
-      document.getElementById('stu-answering-view').classList.add('hidden');
-      document.getElementById('stu-submitted-view').classList.remove('hidden');
-
-      broadcastMsg({
-        type: 'STUDENT_ANSWER',
-        roomPin: myStudentData.roomPin,
-        studentName: myStudentData.name,
-        isCorrect: isCorrect,
-        points: pointsEarned
-      });
-    }
-
-    // --- GEMINI API: XỬ LÝ LỖI TRIỆT ĐỂ ---
+    // --- KIỂM TRA & LƯU KHÓA GEMINI API ---
     function saveApiKey() {
       const keyInput = document.getElementById('gemini-key');
       const key = (keyInput ? keyInput.value : '').trim();
       if (!key) return showToast("Vui lòng dán mã API Key trước khi lưu!", "error");
       state.apiKey = key;
       localStorage.setItem('GEMINI_API_KEY', key);
-      showToast("Đã lưu API Key vào trình duyệt thành công!", "success");
+      showToast("Đã lưu API Key thành công!", "success");
     }
 
     async function testApiKey() {
@@ -635,15 +549,21 @@
       if (!key) return showToast("Vui lòng dán mã API Key để kiểm tra!", "error");
 
       const btn = document.getElementById('btn-test-key');
-      btn.innerText = "⏳ Đang thử...";
+      btn.innerText = "⏳ Đang quét mô hình...";
       btn.disabled = true;
 
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+        // Tự động tìm mô hình khả dụng nhất
+        const activeModel = await discoverActiveModel(key);
+        state.detectedModel = activeModel;
+        localStorage.setItem('GEMINI_DETECTED_MODEL', activeModel);
+
+        // Gửi thử yêu cầu kiểm tra với mô hình vừa tìm được
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: "Hãy trả lời đúng một chữ: OK" }] }] })
+          body: JSON.stringify({ contents: [{ parts: [{ text: "Trả lời ngắn: OK" }] }] })
         });
         const data = await res.json();
         
@@ -653,7 +573,8 @@
 
         state.apiKey = key;
         localStorage.setItem('GEMINI_API_KEY', key);
-        showToast("✅ Tuyệt vời! Khóa API hoạt động chính xác 100%!", "success");
+        showDetectedModelBadge(activeModel);
+        showToast(`✅ Tuyệt vời! Đã kết nối thành công với ${activeModel}`, "success");
       } catch (err) {
         showToast("❌ Khóa API không đúng hoặc bị lỗi: " + err.message, "error");
       } finally {
@@ -662,6 +583,7 @@
       }
     }
 
+    // --- TẠO CÂU HỎI BẰNG GEMINI API ---
     async function generateQuestionsWithAI() {
       const keyInput = document.getElementById('gemini-key');
       const key = (state.apiKey || (keyInput ? keyInput.value : '')).trim();
@@ -677,7 +599,7 @@
       const btn = document.getElementById('btn-ai-gen');
 
       btn.disabled = true;
-      btn.innerHTML = `<span>⏳ Đang kết nối AI tạo đề Toán...</span>`;
+      btn.innerHTML = `<span>⏳ Đang phân tích và tạo đề Toán...</span>`;
 
       const promptText = `Bạn là chuyên gia soạn đề thi Toán THPT chuẩn Chương trình GDPT 2018.
 Hãy tạo ${count} câu hỏi trắc nghiệm Toán theo chủ đề: "${topic}".
@@ -695,7 +617,11 @@ YÊU CẦU BẮT BUỘC:
 ]`;
 
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+        // Tự động tìm mô hình tốt nhất
+        let activeModel = state.detectedModel || await discoverActiveModel(key);
+        showDetectedModelBadge(activeModel);
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(key)}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -710,7 +636,6 @@ YÊU CẦU BẮT BUỘC:
 
         const data = await response.json();
 
-        // 1. KIỂM TRA LỖI TRẢ VỀ TỪ GOOGLE
         if (data.error) {
           const code = data.error.code || 400;
           const msg = data.error.message || "Lỗi không xác định";
@@ -723,11 +648,7 @@ YÊU CẦU BẮT BUỘC:
           }
         }
 
-        // 2. KIỂM TRA DANH SÁCH CANDIDATES
         if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-          if (data.promptFeedback && data.promptFeedback.blockReason) {
-            throw new Error(`Yêu cầu bị chặn bởi bộ lọc an toàn: ${data.promptFeedback.blockReason}`);
-          }
           throw new Error("Google không trả về nội dung câu hỏi. Vui lòng thử lại!");
         }
 
@@ -868,6 +789,142 @@ YÊU CẦU BẮT BUỘC:
     function deleteQuestion(id) {
       state.questionBank = state.questionBank.filter(q => q.id !== id);
       renderBankList();
+    }
+
+    // --- KẾT NỐI REALTIME MQTT ---
+    function initMqtt() {
+      try {
+        const broker = 'wss://broker.emqx.io:8084/mqtt';
+        mqttClient = mqtt.connect(broker, {
+          clientId: 'mq_' + Math.random().toString(16).substr(2, 8),
+          clean: true,
+          connectTimeout: 5000,
+          reconnectPeriod: 3000
+        });
+
+        mqttClient.on('connect', () => {
+          const badge = document.getElementById('cloud-badge');
+          if (badge) {
+            badge.className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1";
+            badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Đám mây Online</span>';
+          }
+          if (state.roomPin) {
+            mqttClient.subscribe(`mathquiz/v1/room_${state.roomPin}/#`);
+          }
+        });
+
+        mqttClient.on('message', (topic, payload) => {
+          try {
+            const data = JSON.parse(payload.toString());
+            handleIncomingMessage(data);
+          } catch(e) {}
+        });
+
+        mqttClient.on('error', () => {
+          const badge = document.getElementById('cloud-badge');
+          if (badge) {
+            badge.className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-950 text-amber-400 border border-amber-800 flex items-center space-x-1";
+            badge.innerHTML = '<span>🟠 Chế độ Nội Bộ</span>';
+          }
+        });
+      } catch (err) {
+        console.warn("MQTT offline, fallback BroadcastChannel");
+      }
+    }
+
+    function broadcastMsg(msg) {
+      if (mqttClient && mqttClient.connected) {
+        const targetPin = msg.roomPin || state.roomPin || myStudentData.roomPin;
+        if (targetPin) {
+          mqttClient.publish(`mathquiz/v1/room_${targetPin}/data`, JSON.stringify(msg));
+        }
+      }
+      bus.postMessage(msg);
+    }
+
+    function handleIncomingMessage(msg) {
+      if (!msg || !msg.type) return;
+
+      if (msg.type === 'STUDENT_JOIN') {
+        if (msg.roomPin === state.roomPin) {
+          if (!state.students.find(s => s.name === msg.student.name)) {
+            state.students.push(msg.student);
+            updateStudentLobbyUI();
+            showToast(`Học sinh "${msg.student.name}" đã vào phòng!`, "success");
+          }
+        }
+      }
+      else if (msg.type === 'STUDENT_ANSWER') {
+        const target = state.students.find(s => s.name === msg.studentName);
+        if (target) {
+          target.answeredCurrent = true;
+          if (msg.isCorrect) {
+            target.score = (target.score || 0) + msg.points;
+            target.correctCount = (target.correctCount || 0) + 1;
+          }
+          updateAnsweredStats();
+        }
+      }
+      else if (msg.type === 'GAME_STARTED' || msg.type === 'NEW_QUESTION') {
+        myStudentData.hasAnswered = false;
+        document.getElementById('stu-waiting-view').classList.add('hidden');
+        document.getElementById('stu-submitted-view').classList.add('hidden');
+        document.getElementById('stu-answering-view').classList.remove('hidden');
+      }
+      else if (msg.type === 'TIMER_TICK') {
+        const tBox = document.getElementById('stu-q-timer');
+        if (tBox) tBox.innerText = `${msg.timer}s`;
+      }
+    }
+
+    // --- HỌC SINH THAM GIA & TRẢ LỜI ---
+    function studentJoinRoom() {
+      const pin = document.getElementById('stu-input-pin').value.trim();
+      const name = document.getElementById('stu-input-name').value.trim();
+
+      if (!name) return showToast("Vui lòng nhập họ và tên của em!", "error");
+      if (!pin || pin.length < 5) return showToast("Vui lòng nhập mã PIN hợp lệ!", "error");
+
+      myStudentData.name = name;
+      myStudentData.roomPin = pin;
+      document.getElementById('stu-display-name').innerText = name;
+      document.getElementById('stu-login-view').classList.add('hidden');
+      document.getElementById('stu-waiting-view').classList.remove('hidden');
+
+      if (mqttClient && mqttClient.connected) {
+        mqttClient.subscribe(`mathquiz/v1/room_${pin}/#`);
+      }
+
+      broadcastMsg({
+        type: 'STUDENT_JOIN',
+        roomPin: pin,
+        student: { id: myStudentData.id, name: name, score: 0, correctCount: 0 }
+      });
+
+      showToast("Đã vào phòng thi đấu!", "success");
+    }
+
+    function studentSubmitAnswer(chosen) {
+      if (myStudentData.hasAnswered) return;
+      myStudentData.hasAnswered = true;
+
+      const currentQ = state.activeQuiz[state.currentQuestionIndex];
+      const isCorrect = currentQ && currentQ.correct === chosen;
+      const pointsEarned = isCorrect ? Math.round(500 + (state.timer / 20) * 500) : 0;
+
+      if (isCorrect) myStudentData.score += pointsEarned;
+      document.getElementById('stu-score').innerText = myStudentData.score;
+
+      document.getElementById('stu-answering-view').classList.add('hidden');
+      document.getElementById('stu-submitted-view').classList.remove('hidden');
+
+      broadcastMsg({
+        type: 'STUDENT_ANSWER',
+        roomPin: myStudentData.roomPin,
+        studentName: myStudentData.name,
+        isCorrect: isCorrect,
+        points: pointsEarned
+      });
     }
 
     // --- PHÒNG CHIẾU HOST & GAMEPLAY ---
