@@ -7,7 +7,7 @@
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- MQTT WebSocket Real-time -->
+  <!-- Real-time MQTT qua WebSocket -->
   <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
   <!-- KaTeX (Hiển thị công thức Toán chuẩn GDPT 2018) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -105,7 +105,7 @@
                   </span>
                   <h3 class="text-lg font-bold text-white">Sĩ số đã vào: <span id="student-count" class="text-indigo-400 text-xl font-black">0</span></h3>
                 </div>
-                <div class="text-xs text-slate-400 font-medium">Bộ đề: <span id="lobby-quiz-name" class="text-amber-300 font-bold">Toán THPT</span></div>
+                <div class="text-xs text-slate-400 font-medium">Bộ đề: <span id="lobby-quiz-name" class="text-amber-300 font-bold">Toán THPT (GDPT 2018)</span></div>
               </div>
 
               <div id="students-lobby-list" class="flex flex-wrap gap-2.5 max-h-[220px] overflow-y-auto p-3 bg-slate-900/60 rounded-2xl border border-slate-800">
@@ -218,16 +218,17 @@
 
     <!-- ==================== TAB 2: NGÂN HÀNG CÂU HỎI & AI ==================== -->
     <section id="view-bank" class="hidden space-y-6">
+      
       <!-- Cấu hình Gemini API Key -->
       <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6">
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
           <h3 class="text-sm font-bold text-white flex items-center space-x-2">
             <span>⚡ Khóa Gemini API (Google AI Studio)</span>
           </h3>
-          <span class="text-[11px] text-slate-400">Lấy miễn phí tại <a href="https://aistudio.google.com" target="_blank" class="text-indigo-400 underline">aistudio.google.com</a></span>
+          <span class="text-[11px] text-slate-400">Lấy mã miễn phí tại: <a href="https://aistudio.google.com" target="_blank" class="text-indigo-400 underline font-semibold">aistudio.google.com</a></span>
         </div>
         <div class="flex flex-col sm:flex-row gap-2">
-          <input type="password" id="gemini-key" placeholder="Dán mã khóa API (bắt đầu bằng AIza...)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono">
+          <input type="password" id="gemini-key" placeholder="Dán mã API Key tại đây (bắt đầu bằng AIza...)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono">
           <div class="flex gap-2">
             <button onclick="testApiKey()" id="btn-test-key" class="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-xl text-xs transition">
               🔍 Kiểm Tra Khóa
@@ -246,8 +247,8 @@
             <h3 class="text-sm font-bold text-indigo-400 mb-3">🤖 Tạo Câu Hỏi Toán Bằng AI</h3>
             <div class="space-y-3 text-xs">
               <div>
-                <label class="block text-slate-400 mb-1">Chủ đề bài học:</label>
-                <input type="text" id="ai-topic" value="Khảo sát hàm số và cực trị của hàm số" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white">
+                <label class="block text-slate-400 mb-1">Chủ đề bài học (Toán THPT):</label>
+                <input type="text" id="ai-topic" value="Khảo sát hàm số và tính đơn điệu" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white">
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
@@ -283,14 +284,18 @@
         </div>
       </div>
 
-      <!-- Danh sách câu hỏi -->
+      <!-- Danh sách câu hỏi & Tiện ích nạp mẫu -->
       <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6">
-        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-700">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 pb-3 border-b border-slate-700 gap-3">
           <div>
             <h3 class="text-base font-bold text-white">Ngân Hàng Câu Hỏi (<span id="total-bank-count">0</span> câu)</h3>
             <p class="text-xs text-slate-400">Tích chọn các câu hỏi sẽ đưa vào trận đấu</p>
           </div>
-          <div class="flex space-x-2 text-xs">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <button onclick="loadSampleQuestions()" class="bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-lg border border-indigo-500/40 transition font-medium">
+              ⚡ Nạp 5 Câu Mẫu Toán 11/12
+            </button>
+            <span class="text-slate-600">|</span>
             <button onclick="selectAllQuestions(true)" class="text-indigo-400 hover:underline">Chọn hết</button>
             <span class="text-slate-600">|</span>
             <button onclick="clearQuestionBank()" class="text-rose-400 hover:underline">Xóa hết</button>
@@ -385,7 +390,54 @@
       activeQuiz: [],
       students: [],
       overrideBaseUrl: localStorage.getItem('MATHQUIZ_BASE_URL') || '',
-      questionBank: [
+      questionBank: []
+    };
+
+    let mqttClient = null;
+    const bus = new BroadcastChannel("mathquiz_realtime_channel");
+    let myStudentData = { id: 'stu_' + Math.random().toString(36).substr(2, 6), name: '', score: 0, hasAnswered: false, roomPin: '' };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (state.apiKey) {
+        const keyInput = document.getElementById('gemini-key');
+        if (keyInput) keyInput.value = state.apiKey;
+      }
+      
+      if (window.location.protocol === 'file:') {
+        document.getElementById('local-file-warning').classList.remove('hidden');
+        if (state.overrideBaseUrl) document.getElementById('override-url-input').value = state.overrideBaseUrl;
+      }
+
+      initMqtt();
+
+      // Nạp sẵn câu hỏi mẫu khi khởi động
+      loadSampleQuestions();
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const pinParam = urlParams.get('pin');
+      const roleParam = urlParams.get('role');
+
+      if (pinParam || roleParam === 'student') {
+        switchTab('student');
+        if (pinParam) {
+          const pinInput = document.getElementById('stu-input-pin');
+          pinInput.value = pinParam;
+          pinInput.readOnly = true;
+          pinInput.classList.add('bg-slate-800', 'cursor-not-allowed');
+          myStudentData.roomPin = pinParam;
+        }
+      } else {
+        switchTab('host');
+        initHostRoom();
+      }
+
+      renderMath();
+      bus.onmessage = (event) => handleIncomingMessage(event.data);
+    });
+
+    // --- BỘ CÂU HỎI MẪU CHUẨN GDPT 2018 ---
+    function loadSampleQuestions() {
+      state.questionBank = [
         {
           id: 1,
           question: "Cho hàm số $y = x^3 - 3x + 2$. Điểm cực đại của đồ thị hàm số là:",
@@ -409,46 +461,27 @@
           correct: "B",
           level: "Nhận biết",
           selected: true
+        },
+        {
+          id: 4,
+          question: "Trong không gian $Oxyz$, cho mặt cầu $(S): (x-1)^2 + (y+2)^2 + z^2 = 9$. Toạ độ tâm $I$ và bán kính $R$ là:",
+          options: ["A. $I(1; -2; 0), R = 3$", "B. $I(-1; 2; 0), R = 3$", "C. $I(1; -2; 0), R = 9$", "D. $I(-1; 2; 0), R = 9$"],
+          correct: "A",
+          level: "Nhận biết",
+          selected: true
+        },
+        {
+          id: 5,
+          question: "Gieo một con xúc xắc cân đối và đồng chất hai lần. Xác suất để tổng số chấm xuất hiện bằng 7 là:",
+          options: ["A. $\\frac{1}{6}$", "B. $\\frac{7}{36}$", "C. $\\frac{1}{12}$", "D. $\\frac{5}{36}$"],
+          correct: "A",
+          level: "Vận dụng",
+          selected: true
         }
-      ]
-    };
-
-    let mqttClient = null;
-    const bus = new BroadcastChannel("mathquiz_realtime_channel");
-    let myStudentData = { id: 'stu_' + Math.random().toString(36).substr(2, 6), name: '', score: 0, hasAnswered: false, roomPin: '' };
-
-    window.addEventListener('DOMContentLoaded', () => {
-      if (state.apiKey) document.getElementById('gemini-key').value = state.apiKey;
-      
-      if (window.location.protocol === 'file:') {
-        document.getElementById('local-file-warning').classList.remove('hidden');
-        if (state.overrideBaseUrl) document.getElementById('override-url-input').value = state.overrideBaseUrl;
-      }
-
-      initMqtt();
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const pinParam = urlParams.get('pin');
-      const roleParam = urlParams.get('role');
-
-      if (pinParam || roleParam === 'student') {
-        switchTab('student');
-        if (pinParam) {
-          const pinInput = document.getElementById('stu-input-pin');
-          pinInput.value = pinParam;
-          pinInput.readOnly = true;
-          pinInput.classList.add('bg-slate-800', 'cursor-not-allowed');
-          myStudentData.roomPin = pinParam;
-        }
-      } else {
-        switchTab('host');
-        initHostRoom();
-        renderBankList();
-      }
-
+      ];
+      renderBankList();
       renderMath();
-      bus.onmessage = (event) => handleIncomingMessage(event.data);
-    });
+    }
 
     // --- KẾT NỐI REALTIME MQTT ---
     function initMqtt() {
@@ -462,8 +495,11 @@
         });
 
         mqttClient.on('connect', () => {
-          document.getElementById('cloud-badge').className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1";
-          document.getElementById('cloud-badge').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Đám mây Online</span>';
+          const badge = document.getElementById('cloud-badge');
+          if (badge) {
+            badge.className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1";
+            badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Đám mây Online</span>';
+          }
           if (state.roomPin) {
             mqttClient.subscribe(`mathquiz/v1/room_${state.roomPin}/#`);
           }
@@ -477,8 +513,11 @@
         });
 
         mqttClient.on('error', () => {
-          document.getElementById('cloud-badge').className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-950 text-amber-400 border border-amber-800 flex items-center space-x-1";
-          document.getElementById('cloud-badge').innerHTML = '<span>🟠 Chế độ Nội Bộ</span>';
+          const badge = document.getElementById('cloud-badge');
+          if (badge) {
+            badge.className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-950 text-amber-400 border border-amber-800 flex items-center space-x-1";
+            badge.innerHTML = '<span>🟠 Chế độ Nội Bộ</span>';
+          }
         });
       } catch (err) {
         console.warn("MQTT offline, fallback BroadcastChannel");
@@ -580,35 +619,43 @@
       });
     }
 
-    // --- GEMINI API XỬ LÝ LỖI TRIỆT ĐỂ ---
+    // --- GEMINI API: XỬ LÝ LỖI TRIỆT ĐỂ ---
     function saveApiKey() {
-      const key = document.getElementById('gemini-key').value.trim();
-      if (!key) return showToast("Vui lòng nhập mã API Key!", "error");
+      const keyInput = document.getElementById('gemini-key');
+      const key = (keyInput ? keyInput.value : '').trim();
+      if (!key) return showToast("Vui lòng dán mã API Key trước khi lưu!", "error");
       state.apiKey = key;
       localStorage.setItem('GEMINI_API_KEY', key);
-      showToast("Đã lưu API Key vào trình duyệt!", "success");
+      showToast("Đã lưu API Key vào trình duyệt thành công!", "success");
     }
 
     async function testApiKey() {
-      const key = document.getElementById('gemini-key').value.trim();
-      if (!key) return showToast("Vui lòng nhập API Key để kiểm tra!", "error");
+      const keyInput = document.getElementById('gemini-key');
+      const key = (keyInput ? keyInput.value : state.apiKey).trim();
+      if (!key) return showToast("Vui lòng dán mã API Key để kiểm tra!", "error");
+
       const btn = document.getElementById('btn-test-key');
       btn.innerText = "⏳ Đang thử...";
       btn.disabled = true;
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: "Trả lời ngắn: Xin chào" }] }] })
+          body: JSON.stringify({ contents: [{ parts: [{ text: "Hãy trả lời đúng một chữ: OK" }] }] })
         });
         const data = await res.json();
-        if (data.error) throw new Error(data.error.message);
-        showToast("✅ Tuyệt vời! Khóa API hoạt động rất tốt!", "success");
+        
+        if (data.error) {
+          throw new Error(data.error.message || "Khóa không hợp lệ");
+        }
+
         state.apiKey = key;
         localStorage.setItem('GEMINI_API_KEY', key);
+        showToast("✅ Tuyệt vời! Khóa API hoạt động chính xác 100%!", "success");
       } catch (err) {
-        showToast("❌ Khóa API không hợp lệ: " + err.message, "error");
+        showToast("❌ Khóa API không đúng hoặc bị lỗi: " + err.message, "error");
       } finally {
         btn.innerText = "🔍 Kiểm Tra Khóa";
         btn.disabled = false;
@@ -616,90 +663,117 @@
     }
 
     async function generateQuestionsWithAI() {
-      const key = (state.apiKey || document.getElementById('gemini-key').value).trim();
-      if (!key) return showToast("Vui lòng nhập và Lưu API Key trước!", "error");
+      const keyInput = document.getElementById('gemini-key');
+      const key = (state.apiKey || (keyInput ? keyInput.value : '')).trim();
 
-      const topic = document.getElementById('ai-topic').value.trim();
+      if (!key) {
+        showToast("Thầy chưa nhập API Key! Hãy dán mã API Key và bấm Lưu Khóa.", "error");
+        return;
+      }
+
+      const topic = document.getElementById('ai-topic').value.trim() || "Khảo sát hàm số";
       const level = document.getElementById('ai-level').value;
       const count = parseInt(document.getElementById('ai-count').value) || 3;
       const btn = document.getElementById('btn-ai-gen');
 
       btn.disabled = true;
-      btn.innerHTML = `<span>⏳ Đang phân tích và tạo câu hỏi...</span>`;
+      btn.innerHTML = `<span>⏳ Đang kết nối AI tạo đề Toán...</span>`;
 
       const promptText = `Bạn là chuyên gia soạn đề thi Toán THPT chuẩn Chương trình GDPT 2018.
 Hãy tạo ${count} câu hỏi trắc nghiệm Toán theo chủ đề: "${topic}".
 Mức độ yêu cầu: "${level}".
 YÊU CẦU BẮT BUỘC:
-1. Mọi công thức Toán (ký hiệu, hàm số, phương trình, vector, toạ độ, phân số) phải đặt trong dấu $...$ (ví dụ: $y=x^3-3x$, $\\int_0^1 xdx$).
-2. Trả về đúng định dạng JSON Array chứa ${count} phần tử. Không viết thêm chữ giải thích bên ngoài JSON.
-Mẫu JSON:
+1. Mọi công thức Toán (ký hiệu x, y, căn thức, phân số, tích phân, hàm số...) PHẢI đặt trong dấu $...$ (ví dụ: $y = x^3 - 3x$, $\\int_0^1 x dx$).
+2. Trả về DUY NHẤT một mảng JSON thuần túy (không kèm bất kỳ chữ giải thích nào khác bên ngoài JSON):
 [
   {
-    "question": "Cho hàm số $y=f(x)$...",
-    "options": ["A. $x=1$", "B. $x=2$", "C. $x=3$", "D. $x=4$"],
+    "question": "Nội dung câu hỏi...",
+    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
     "correct": "A",
     "level": "${level}"
   }
 ]`;
 
-      // Hỗ trợ thử cả 2 model phổ biến nhất
-      const models = ['gemini-1.5-flash', 'gemini-2.0-flash'];
-      let lastError = null;
-      let generatedData = null;
-
-      for (const model of models) {
-        try {
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: promptText }] }],
-              generationConfig: {
-                responseMimeType: "application/json" // Ép kiểu JSON trực tiếp từ Google
-              }
-            })
-          });
-
-          const data = await response.json();
-          if (data.error) {
-            throw new Error(`Google báo lỗi (${data.error.code}): ${data.error.message}`);
-          }
-
-          if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
-            let rawJson = data.candidates[0].content.parts[0].text.trim();
-            // Xóa markdown nếu có
-            rawJson = rawJson.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            generatedData = JSON.parse(rawJson);
-            break; // Thành công, thoát vòng lặp
-          }
-        } catch (err) {
-          lastError = err;
-          console.warn(`Model ${model} gặp lỗi:`, err.message);
-        }
-      }
-
-      if (generatedData && Array.isArray(generatedData)) {
-        generatedData.forEach(q => {
-          state.questionBank.unshift({
-            id: Date.now() + Math.random(),
-            question: q.question,
-            options: q.options,
-            correct: q.correct ? q.correct.toUpperCase().trim() : "A",
-            level: q.level || level,
-            selected: true
-          });
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }],
+            generationConfig: {
+              temperature: 0.7,
+              responseMimeType: "application/json"
+            }
+          })
         });
 
-        renderBankList();
-        renderMath();
-        showToast(`Đã tạo thành công ${generatedData.length} câu hỏi mới!`, "success");
-      } else {
-        showToast("Lỗi khi gọi AI: " + (lastError ? lastError.message : "Không nhận được phản hồi hợp lệ"), "error");
-      }
+        const data = await response.json();
 
-      btn.disabled = false;
-      btn.innerHTML = `<span>✨ Khởi Tạo Đề Bằng Gemini</span>`;
+        // 1. KIỂM TRA LỖI TRẢ VỀ TỪ GOOGLE
+        if (data.error) {
+          const code = data.error.code || 400;
+          const msg = data.error.message || "Lỗi không xác định";
+          if (code === 400 || msg.includes("API key not valid")) {
+            throw new Error("Mã API Key không hợp lệ hoặc đã bị vô hiệu hóa.");
+          } else if (code === 429 || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+            throw new Error("Tài khoản đã dùng hết hạn mức miễn phí hôm nay (Quota Exceeded).");
+          } else {
+            throw new Error(`Google báo lỗi (${code}): ${msg}`);
+          }
+        }
+
+        // 2. KIỂM TRA DANH SÁCH CANDIDATES
+        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+          if (data.promptFeedback && data.promptFeedback.blockReason) {
+            throw new Error(`Yêu cầu bị chặn bởi bộ lọc an toàn: ${data.promptFeedback.blockReason}`);
+          }
+          throw new Error("Google không trả về nội dung câu hỏi. Vui lòng thử lại!");
+        }
+
+        const parts = data.candidates[0].content.parts;
+        if (!parts || !parts[0] || !parts[0].text) {
+          throw new Error("Nội dung phản hồi từ AI rỗng.");
+        }
+
+        let rawText = parts[0].text.trim();
+        rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+
+        const generatedData = JSON.parse(rawText);
+        if (!Array.isArray(generatedData)) {
+          throw new Error("Dữ liệu trả về không phải là mảng câu hỏi.");
+        }
+
+        let addedCount = 0;
+        generatedData.forEach(q => {
+          if (q.question && q.options && q.options.length >= 4) {
+            state.questionBank.unshift({
+              id: Date.now() + Math.random(),
+              question: q.question,
+              options: q.options,
+              correct: (q.correct || 'A').toUpperCase().trim(),
+              level: q.level || level,
+              selected: true
+            });
+            addedCount++;
+          }
+        });
+
+        if (addedCount > 0) {
+          renderBankList();
+          renderMath();
+          showToast(`🎉 Đã tạo thành công ${addedCount} câu hỏi Toán THPT!`, "success");
+        } else {
+          throw new Error("Không tìm thấy câu hỏi hợp lệ trong kết quả.");
+        }
+
+      } catch (err) {
+        console.error("Lỗi Gemini:", err);
+        showToast("❌ " + err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>✨ Khởi Tạo Đề Bằng Gemini</span>`;
+      }
     }
 
     // --- DÁN ĐỀ CÓ SẴN ---
@@ -753,7 +827,7 @@ Mẫu JSON:
       document.getElementById('total-bank-count').innerText = state.questionBank.length;
 
       if (state.questionBank.length === 0) {
-        list.innerHTML = `<div class="text-slate-500 text-xs italic py-4 text-center">Ngân hàng đang trống!</div>`;
+        list.innerHTML = `<div class="text-slate-500 text-xs italic py-4 text-center">Ngân hàng đang trống! Bấm "Nạp 5 Câu Mẫu" hoặc dùng AI để tạo.</div>`;
         return;
       }
 
@@ -805,7 +879,7 @@ Mẫu JSON:
         if (window.location.protocol !== 'file:') {
           baseUrl = window.location.origin + window.location.pathname;
         } else {
-          baseUrl = "http://mathquiz.live";
+          baseUrl = "[http://mathquiz.live](http://mathquiz.live)";
         }
       }
 
@@ -867,7 +941,7 @@ Mẫu JSON:
       }
 
       const q = state.activeQuiz[index];
-      document.getElementById('question-progress').innerText = `Câu ${index + 1} /${state.activeQuiz.length}`;
+      document.getElementById('question-progress').innerText = `Câu ${index + 1} / ${state.activeQuiz.length}`;
       document.getElementById('q-level').innerText = `Mức độ: ${q.level || 'Thông hiểu'}`;
       document.getElementById('question-text').innerHTML = q.question;
       
@@ -945,3 +1019,93 @@ Mẫu JSON:
             <td class="p-3 font-bold text-amber-400">#${idx + 1}</td>
             <td class="p-3 font-semibold text-white">${s.name}</td>
             <td class="p-3 text-indigo-400 font-bold">${s.score}</td>
+            <td class="p-3">${s.correctCount || 0} / ${totalQ}</td>
+            <td class="p-3 text-emerald-400 font-medium">${accuracy}%</td>
+          </tr>
+        `;
+      }).join('');
+
+      confetti({ particleCount: 130, spread: 80, origin: { y: 0.6 } });
+    }
+
+    function exportToExcel() {
+      const sorted = [...state.students].sort((a, b) => b.score - a.score);
+      const totalQ = state.activeQuiz.length;
+
+      let csv = "\uFEFF";
+      csv += "Xếp Hạng,Họ và Tên,Điểm Số,Số Câu Đúng,Tổng Số Câu,Tỷ Lệ Chính Xác\n";
+
+      sorted.forEach((s, idx) => {
+        const accuracy = totalQ > 0 ? Math.round((s.correctCount / totalQ) * 100) : 0;
+        csv += `"${idx + 1}","${s.name}","${s.score}","${s.correctCount || 0}","${totalQ}","${accuracy}%"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Bang_Diem_MathQuiz_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function resetToLobby() {
+      document.getElementById('host-podium').classList.add('hidden');
+      document.getElementById('host-lobby').classList.remove('hidden');
+      state.students.forEach(s => { s.score = 0; s.correctCount = 0; });
+      updateStudentLobbyUI();
+    }
+
+    // --- TIỆN ÍCH GIAO DIỆN ---
+    function renderMath() {
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false }
+          ],
+          throwOnError: false
+        });
+      }
+    }
+
+    function switchTab(tabId) {
+      ['host', 'bank', 'student'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        const b = document.getElementById(`tab-${t}`);
+        if (b) {
+          b.classList.remove('bg-indigo-600', 'text-white', 'shadow');
+          b.classList.add('text-slate-400');
+        }
+      });
+      document.getElementById(`view-${tabId}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-${tabId}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-indigo-600', 'text-white', 'shadow');
+        activeBtn.classList.remove('text-slate-400');
+      }
+      renderMath();
+    }
+
+    function showToast(text, type = "info") {
+      const t = document.getElementById('toast');
+      t.innerText = text;
+      t.className = `fixed top-16 right-4 z-50 max-w-sm px-4 py-3 rounded-xl shadow-2xl text-xs md:text-sm font-semibold transition-all duration-300 transform translate-y-0 opacity-100 ${
+        type === 'success' ? 'bg-emerald-600 text-white' : type === 'error' ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white'
+      }`;
+      setTimeout(() => {
+        t.className = t.className.replace('translate-y-0 opacity-100', 'translate-y-[-150%] opacity-0');
+      }, 3500);
+    }
+
+    function applyOverrideUrl() {
+      const val = document.getElementById('override-url-input').value.trim();
+      if (!val) return showToast("Vui lòng nhập đường dẫn web hợp lệ!", "error");
+      state.overrideBaseUrl = val;
+      localStorage.setItem('MATHQUIZ_BASE_URL', val);
+      initHostRoom();
+      showToast("Đã cập nhật mã QR theo đường dẫn mới!", "success");
+    }
+  </script>
+</body>
+</html>
