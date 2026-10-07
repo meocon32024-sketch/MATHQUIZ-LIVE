@@ -2,11 +2,14 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>MathQuiz Live - Đấu Trường Toán Học Thầy Thắng</title>
+  
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- KaTeX -->
+  <!-- Thư viện truyền dữ liệu Internet Real-time (MQTT WebSocket) -->
+  <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+  <!-- KaTeX (Hiển thị công thức Toán chuẩn GDPT 2018) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
@@ -14,85 +17,92 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-  
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700;800&display=swap');
-    body { font-family: 'Lexend', sans-serif; }
+    body { font-family: 'Lexend', sans-serif; -webkit-tap-highlight-color: transparent; }
     .math-content .katex { font-size: 1.15em; }
     .podium-1 { height: 180px; }
     .podium-2 { height: 130px; }
     .podium-3 { height: 95px; }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col select-none">
 
   <!-- Header -->
-  <header class="bg-slate-800/90 border-b border-slate-700 sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+  <header class="bg-slate-800/95 border-b border-slate-700 sticky top-0 z-50 px-4 md:px-6 py-3 flex items-center justify-between">
     <div class="flex items-center space-x-3">
       <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center font-black text-xl shadow-lg shadow-indigo-500/30">
         ∑
       </div>
       <div>
-        <h1 class="text-lg font-bold text-white tracking-wide">MathQuiz Live</h1>
-        <p class="text-xs text-indigo-400 font-medium">Lớp Học Toán Tương Tác</p>
+        <h1 class="text-base md:text-lg font-bold text-white tracking-wide">MathQuiz Live</h1>
+        <p class="text-xs text-indigo-400 font-medium">Toán Học Tương Tác • Thầy Thắng</p>
       </div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <nav class="flex space-x-2 bg-slate-900/60 p-1 rounded-xl border border-slate-700/60">
-      <button onclick="switchTab('host')" id="tab-host" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition bg-indigo-600 text-white shadow">
-        📺 Phòng Chiếu (Host)
-      </button>
-      <button onclick="switchTab('bank')" id="tab-bank" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-400 hover:text-white">
-        📚 Ngân Hàng Đề & AI
-      </button>
-      <button onclick="switchTab('student')" id="tab-student" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-400 hover:text-white">
-        📱 Màn Hình Học Sinh (Test)
-      </button>
-    </nav>
+    <!-- Trạng thái kết nối Internet -->
+    <div class="flex items-center space-x-2">
+      <span id="cloud-badge" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Đám mây Online</span>
+      </span>
+
+      <!-- Chuyển đổi giao diện -->
+      <nav class="hidden md:flex space-x-1 bg-slate-900/60 p-1 rounded-xl border border-slate-700/60">
+        <button onclick="switchTab('host')" id="tab-host" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow">
+          📺 Máy Chiếu (Host)
+        </button>
+        <button onclick="switchTab('bank')" id="tab-bank" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white">
+          📚 Ngân Hàng Đề & AI
+        </button>
+        <button onclick="switchTab('student')" id="tab-student" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white">
+          📱 Học Sinh
+        </button>
+      </nav>
+    </div>
   </header>
 
-  <!-- MAIN CONTAINER -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">
+  <!-- THÔNG BÁO TOAST -->
+  <div id="toast" class="fixed top-16 right-4 z-50 max-w-sm px-4 py-3 rounded-xl shadow-2xl text-sm font-medium transition-all duration-300 transform translate-y-[-150%] opacity-0 pointer-events-none"></div>
 
-    <!-- CẢNH BÁO MÔI TRƯỜNG NỘI BỘ (FILE://) -->
-    <div id="local-file-warning" class="hidden mb-6 bg-amber-500/15 border-2 border-amber-500/60 rounded-2xl p-4 md:p-5 text-amber-200">
+  <!-- NỘI DUNG CHÍNH -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-3 md:p-6">
+
+    <!-- CẢNH BÁO MÔI TRƯỜNG FILE:// (NẾU MỞ TRỰC TIẾP TỪ Ổ ĐĨA) -->
+    <div id="local-file-warning" class="hidden mb-6 bg-amber-500/15 border-2 border-amber-500/60 rounded-2xl p-4 text-amber-200">
       <div class="flex items-start space-x-3">
         <span class="text-2xl">⚠️</span>
-        <div class="flex-1 text-sm leading-relaxed">
-          <strong class="font-bold text-amber-300 block text-base mb-1">CẢNH BÁO: Thầy đang mở file trực tiếp từ ổ cứng máy tính (file:///...)</strong>
-          Điện thoại học sinh khi quét mã QR sẽ không thể truy cập vào ổ đĩa của máy tính Thầy được.
-          <div class="mt-2 text-xs text-amber-300/80">
-            👉 <b>Cách xử lý:</b> Kéo thả file này lên <a href="https://app.netlify.com/drop" target="_blank" class="underline font-bold text-white">Netlify Drop</a> hoặc Vercel để lấy link web thật.
-            Hoặc nếu Thầy đã có link web, hãy dán link vào ô bên dưới để mã QR cập nhật chính xác:
-          </div>
-          <div class="mt-3 flex gap-2 max-w-xl">
-            <input type="text" id="override-url-input" placeholder="Ví dụ: https://mathquiz.vercel.app" class="flex-1 bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none">
-            <button onclick="applyOverrideUrl()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-1.5 rounded-xl text-xs transition">
-              Cập Nhật Mã QR
+        <div class="flex-1 text-xs md:text-sm leading-relaxed">
+          <strong class="font-bold text-amber-300 block text-sm md:text-base mb-1">Thầy đang mở file từ ổ cứng máy tính (file:///...)</strong>
+          Điện thoại học sinh khi quét QR cần đường dẫn mạng Internet thật để kết nối. Thầy hãy tải file lên <a href="https://app.netlify.com/drop" target="_blank" class="underline font-bold text-white">Netlify Drop</a> hoặc dán đường dẫn web vào ô dưới:
+          <div class="mt-2 flex gap-2 max-w-lg">
+            <input type="text" id="override-url-input" placeholder="Ví dụ: https://mathquiz.netlify.app" class="flex-1 bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none">
+            <button onclick="applyOverrideUrl()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-1.5 rounded-xl text-xs">
+              Cập Nhật QR
             </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- TAB 1: PHÒNG HOST (Dành cho máy chiếu giáo viên) -->
+    <!-- ==================== TAB 1: PHÒNG CHIẾU (HOST) ==================== -->
     <section id="view-host" class="space-y-6">
       <!-- Sảnh chờ (Lobby) -->
-      <div id="host-lobby" class="bg-slate-800 border border-slate-700 rounded-2xl p-6 md:p-8 shadow-xl">
+      <div id="host-lobby" class="bg-slate-800 border border-slate-700 rounded-3xl p-6 md:p-8 shadow-2xl">
         <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
           
           <!-- Khung QR & PIN -->
-          <div class="md:col-span-5 flex flex-col items-center text-center p-6 bg-slate-900/80 rounded-2xl border border-slate-700">
+          <div class="md:col-span-5 flex flex-col items-center text-center p-6 bg-slate-900/90 rounded-2xl border border-slate-700">
             <span class="text-xs uppercase tracking-wider font-bold text-indigo-400 mb-2">Quét mã bằng Camera / Zalo</span>
-            <div id="qrcode" class="p-3 bg-white rounded-xl shadow-lg mb-3 flex items-center justify-center min-h-[170px]"></div>
-            <div class="text-xs text-slate-400">Hoặc nhập Mã PIN phòng:</div>
-            <div id="display-pin" class="text-4xl font-black text-amber-400 tracking-widest my-1 font-mono">------</div>
-            <p id="qr-target-url" class="text-[11px] text-slate-500 mt-1 break-all px-2"></p>
+            <div id="qrcode" class="p-3 bg-white rounded-2xl shadow-xl mb-3 flex items-center justify-center min-h-[180px]"></div>
+            <div class="text-xs text-slate-400">Hoặc truy cập Web và nhập PIN:</div>
+            <div id="display-pin" class="text-4xl md:text-5xl font-black text-amber-400 tracking-widest my-1 font-mono">------</div>
+            <p id="qr-target-url" class="text-[10px] text-slate-500 mt-1 break-all px-2"></p>
           </div>
 
-          <!-- Danh sách học sinh đã vào phòng -->
-          <div class="md:col-span-7 flex flex-col h-full justify-between">
+          <!-- Danh sách học sinh -->
+          <div class="md:col-span-7 flex flex-col h-full justify-between space-y-4">
             <div>
               <div class="flex items-center justify-between mb-4 border-b border-slate-700 pb-3">
                 <div class="flex items-center space-x-2">
@@ -100,19 +110,18 @@
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                   </span>
-                  <h3 class="text-lg font-bold text-white">Sĩ số đã vào: <span id="student-count" class="text-indigo-400">0</span></h3>
+                  <h3 class="text-lg font-bold text-white">Sĩ số đã vào: <span id="student-count" class="text-indigo-400 text-xl font-black">0</span></h3>
                 </div>
-                <div class="text-sm text-slate-400 font-medium">Bộ đề: <span id="lobby-quiz-name" class="text-amber-300 font-bold">Toán THPT</span></div>
+                <div class="text-xs text-slate-400 font-medium">Bộ đề: <span id="lobby-quiz-name" class="text-amber-300 font-bold">Toán THPT (Chuẩn GDPT 2018)</span></div>
               </div>
 
-              <!-- Thẻ học sinh -->
-              <div id="students-lobby-list" class="flex flex-wrap gap-2.5 max-h-[220px] overflow-y-auto p-2 bg-slate-900/50 rounded-xl border border-slate-800">
-                <div class="text-slate-500 text-sm italic m-auto py-8">Đang chờ học sinh quét mã vào phòng...</div>
+              <div id="students-lobby-list" class="flex flex-wrap gap-2.5 max-h-[220px] overflow-y-auto p-3 bg-slate-900/60 rounded-2xl border border-slate-800">
+                <div class="text-slate-500 text-sm italic m-auto py-10">Đang chờ học sinh quét mã vào phòng...</div>
               </div>
             </div>
 
-            <div class="pt-6 flex gap-4">
-              <button onclick="startGame()" id="btn-start" disabled class="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-xl text-lg shadow-lg transition flex items-center justify-center space-x-2">
+            <div class="pt-2 flex gap-4">
+              <button onclick="startGame()" id="btn-start" disabled class="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black py-4 rounded-2xl text-lg shadow-xl shadow-emerald-950 transition flex items-center justify-center space-x-2">
                 <span>🚀 Bắt Đầu Đấu Trường</span>
               </button>
             </div>
@@ -120,44 +129,43 @@
         </div>
       </div>
 
-      <!-- Trạng thái 2: Đang làm bài (Question Screen) -->
+      <!-- Đang làm bài (Question View) -->
       <div id="host-gameplay" class="hidden space-y-6">
-        <div class="bg-slate-800 px-6 py-4 rounded-xl border border-slate-700 flex items-center justify-between shadow-md">
+        <div class="bg-slate-800 px-6 py-4 rounded-2xl border border-slate-700 flex items-center justify-between shadow-lg">
           <div class="text-indigo-400 font-bold text-lg" id="question-progress">Câu 1 / 5</div>
           <div class="flex items-center space-x-3">
-            <span class="text-slate-400 text-sm">Thời gian:</span>
-            <div id="timer-box" class="w-14 h-14 rounded-xl bg-indigo-600 font-black text-2xl flex items-center justify-center text-white shadow-lg animate-pulse">20</div>
+            <span class="text-slate-400 text-xs">Thời gian:</span>
+            <div id="timer-box" class="w-14 h-14 rounded-2xl bg-indigo-600 font-black text-2xl flex items-center justify-center text-white shadow-lg animate-pulse">20</div>
           </div>
-          <div class="text-slate-300 font-medium">Đã nộp: <span id="answered-count" class="text-emerald-400 font-bold">0</span>/<span id="total-active">0</span></div>
+          <div class="text-slate-300 font-medium text-sm">Đã nộp: <span id="answered-count" class="text-emerald-400 font-bold text-lg">0</span>/<span id="total-active">0</span></div>
         </div>
 
-        <!-- Khung câu hỏi Toán -->
-        <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-8 shadow-2xl">
+        <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6 md:p-8 shadow-2xl">
           <div class="text-xs uppercase tracking-wider text-amber-400 font-bold mb-2" id="q-level">Mức độ: Vận dụng</div>
-          <div id="question-text" class="text-2xl font-bold text-white mb-8 math-content leading-relaxed"></div>
+          <div id="question-text" class="text-xl md:text-2xl font-bold text-white mb-8 math-content leading-relaxed"></div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="options-grid"></div>
         </div>
 
         <div class="flex justify-end">
-          <button onclick="nextQuestion()" id="btn-next-q" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-xl shadow transition">
+          <button onclick="nextQuestion()" id="btn-next-q" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3.5 rounded-xl shadow-lg transition">
             Câu Tiếp Theo ➔
           </button>
         </div>
       </div>
 
-      <!-- Trạng thái 3: Tổng kết & Vinh danh (Podium) -->
-      <div id="host-podium" class="hidden bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl">
-        <div class="text-center mb-10">
+      <!-- Vinh danh Top 3 & Xuất Excel -->
+      <div id="host-podium" class="hidden bg-slate-800 border border-slate-700 rounded-3xl p-6 md:p-8 shadow-2xl">
+        <div class="text-center mb-8">
           <span class="bg-amber-500/20 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full border border-amber-500/40 uppercase">Hoàn Thành Trận Đấu</span>
           <h2 class="text-3xl font-extrabold text-white mt-3">🏆 BẢNG VÀNG VINH DANH TOP 3</h2>
-          <p class="text-slate-400 text-sm mt-1">Chúc mừng các chiến binh Toán học có thành tích xuất sắc nhất!</p>
+          <p class="text-slate-400 text-xs mt-1">Chúc mừng các chiến binh Toán học xuất sắc nhất!</p>
         </div>
 
-        <!-- Bục Top 3 -->
+        <!-- Bục Vinh Danh -->
         <div class="flex justify-center items-end max-w-lg mx-auto gap-3 pt-6 pb-4">
           <!-- Hạng 2 -->
           <div class="flex-1 flex flex-col items-center">
-            <div id="rank2-name" class="font-bold text-slate-200 text-sm truncate max-w-[110px] mb-1">---</div>
+            <div id="rank2-name" class="font-bold text-slate-200 text-xs md:text-sm truncate max-w-[100px] mb-1">---</div>
             <div id="rank2-score" class="text-xs text-indigo-300 font-bold mb-2">0 pts</div>
             <div class="podium-2 w-full bg-gradient-to-t from-slate-600 to-slate-400 rounded-t-2xl flex flex-col items-center justify-start pt-3 shadow-lg border-t-2 border-slate-300">
               <span class="text-2xl font-black text-slate-900">2</span>
@@ -168,7 +176,7 @@
           <!-- Hạng 1 -->
           <div class="flex-1 flex flex-col items-center">
             <span class="text-3xl animate-bounce">👑</span>
-            <div id="rank1-name" class="font-black text-amber-300 text-base truncate max-w-[130px] mb-1">---</div>
+            <div id="rank1-name" class="font-black text-amber-300 text-sm md:text-base truncate max-w-[120px] mb-1">---</div>
             <div id="rank1-score" class="text-xs text-amber-400 font-bold mb-2">0 pts</div>
             <div class="podium-1 w-full bg-gradient-to-t from-amber-600 to-amber-400 rounded-t-2xl flex flex-col items-center justify-start pt-4 shadow-2xl border-t-2 border-yellow-200">
               <span class="text-3xl font-black text-amber-950">1</span>
@@ -178,7 +186,7 @@
 
           <!-- Hạng 3 -->
           <div class="flex-1 flex flex-col items-center">
-            <div id="rank3-name" class="font-bold text-amber-600 text-sm truncate max-w-[110px] mb-1">---</div>
+            <div id="rank3-name" class="font-bold text-amber-600 text-xs md:text-sm truncate max-w-[100px] mb-1">---</div>
             <div id="rank3-score" class="text-xs text-indigo-300 font-bold mb-2">0 pts</div>
             <div class="podium-3 w-full bg-gradient-to-t from-amber-800 to-amber-600 rounded-t-2xl flex flex-col items-center justify-start pt-3 shadow-lg border-t-2 border-amber-500">
               <span class="text-2xl font-black text-amber-950">3</span>
@@ -187,18 +195,18 @@
           </div>
         </div>
 
-        <!-- Bảng xếp hạng chi tiết -->
-        <div class="mt-12 bg-slate-900/80 rounded-xl border border-slate-700 p-6">
+        <!-- Bảng điểm chi tiết & Nút Excel -->
+        <div class="mt-10 bg-slate-900/80 rounded-2xl border border-slate-700 p-4 md:p-6">
           <div class="flex flex-col sm:flex-row items-center justify-between pb-4 border-b border-slate-800 gap-4">
-            <h3 class="text-lg font-bold text-white">Toàn bộ bảng điểm học sinh</h3>
-            <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center space-x-2 shadow-lg transition">
+            <h3 class="text-base font-bold text-white">Bảng điểm tổng hợp</h3>
+            <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 shadow-lg transition">
               <span>📥 Xuất File Excel / CSV (Chuẩn Tiếng Việt)</span>
             </button>
           </div>
 
           <div class="overflow-x-auto mt-4 max-h-60 overflow-y-auto">
-            <table class="w-full text-left text-sm text-slate-300">
-              <thead class="bg-slate-800 text-slate-400 uppercase text-xs">
+            <table class="w-full text-left text-xs md:text-sm text-slate-300">
+              <thead class="bg-slate-800 text-slate-400 uppercase text-[11px]">
                 <tr>
                   <th class="p-3">Hạng</th>
                   <th class="p-3">Họ và Tên</th>
@@ -212,7 +220,7 @@
           </div>
 
           <div class="mt-6 flex justify-center">
-            <button onclick="resetToLobby()" class="text-slate-400 hover:text-white text-sm font-semibold underline">
+            <button onclick="resetToLobby()" class="text-slate-400 hover:text-white text-xs font-semibold underline">
               🔄 Tạo vòng thi mới
             </button>
           </div>
@@ -220,149 +228,149 @@
       </div>
     </section>
 
-    <!-- TAB 2: NGÂN HÀNG CÂU HỎI & TRỢ LÝ AI -->
-    <section id="view-bank" class="hidden space-y-8">
-      <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
-        <h3 class="text-base font-bold text-white mb-3">⚡ Kết Nối Gemini API (Google AI Studio)</h3>
-        <div class="flex gap-3">
-          <input type="password" id="gemini-key" placeholder="Dán API Key (AIza...)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
-          <button onclick="saveApiKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition">
-            Lưu Khóa
-          </button>
+    <!-- ==================== TAB 2: NGÂN HÀNG CÂU HỎI & AI ==================== -->
+    <section id="view-bank" class="hidden space-y-6">
+      <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6">
+        <h3 class="text-sm font-bold text-white mb-2">⚡ Khóa Gemini API (Google AI Studio)</h3>
+        <div class="flex gap-2">
+          <input type="password" id="gemini-key" placeholder="Dán API Key (AIza...)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none">
+          <button onclick="saveApiKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-xl text-xs">Lưu Khóa</button>
         </div>
       </div>
 
-      <!-- 2 Cột: Tạo Đề Bằng AI & Dán Đề Có Sẵn -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col justify-between">
+        <!-- Tạo đề AI -->
+        <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6 flex flex-col justify-between">
           <div>
-            <h3 class="text-base font-bold text-indigo-400 mb-3">🤖 Tạo Câu Hỏi Toán Bằng AI</h3>
-            <div class="space-y-3">
+            <h3 class="text-sm font-bold text-indigo-400 mb-3">🤖 Tạo Câu Hỏi Toán Bằng AI</h3>
+            <div class="space-y-3 text-xs">
               <div>
-                <label class="block text-xs font-semibold text-slate-400 mb-1">Chủ đề bài học:</label>
-                <input type="text" id="ai-topic" value="Khảo sát hàm số và tính đơn điệu" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white">
+                <label class="block text-slate-400 mb-1">Chủ đề:</label>
+                <input type="text" id="ai-topic" value="Khảo sát hàm số và cực trị" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white">
               </div>
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-400 mb-1">Mức độ:</label>
-                  <select id="ai-level" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
+                  <label class="block text-slate-400 mb-1">Mức độ:</label>
+                  <select id="ai-level" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white">
+                    <option value="Thông hiểu - Vận dụng">Thông hiểu & Vận dụng</option>
                     <option value="Nhận biết - Thông hiểu">Nhận biết & Thông hiểu</option>
-                    <option value="Thông hiểu - Vận dụng" selected>Thông hiểu & Vận dụng</option>
                     <option value="Vận dụng cao">Vận dụng cao</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-400 mb-1">Số lượng câu:</label>
-                  <input type="number" id="ai-count" value="3" min="1" max="10" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
+                  <label class="block text-slate-400 mb-1">Số câu:</label>
+                  <input type="number" id="ai-count" value="3" min="1" max="10" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white">
                 </div>
               </div>
             </div>
           </div>
-          <button onclick="generateQuestionsWithAI()" id="btn-ai-gen" class="mt-5 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-sm transition">
+          <button onclick="generateQuestionsWithAI()" id="btn-ai-gen" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition">
             ✨ Khởi Tạo Đề Bằng Gemini
           </button>
         </div>
 
-        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col justify-between">
+        <!-- Dán đề có sẵn -->
+        <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6 flex flex-col justify-between">
           <div>
-            <h3 class="text-base font-bold text-amber-400 mb-2">📋 Dán Nhanh Đề Trắc Nghiệm Có Sẵn</h3>
-            <p class="text-xs text-slate-400 mb-3">Hỗ trợ $\LaTeX$ trong văn bản (đặt trong dấu $...$)</p>
-            <textarea id="paste-input" rows="5" placeholder="Câu 1: Cho hàm số $y=x^3-3x$. Giá trị cực tiểu là:&#10;A. 2&#10;B. -2&#10;C. 0&#10;D. 1&#10;Đáp án: B" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono"></textarea>
+            <h3 class="text-sm font-bold text-amber-400 mb-2">📋 Dán Nhanh Đề Trắc Nghiệm Có Sẵn</h3>
+            <p class="text-[11px] text-slate-400 mb-2">Hỗ trợ $\LaTeX$ trong văn bản (ví dụ $y=x^2-4x$)</p>
+            <textarea id="paste-input" rows="5" placeholder="Câu 1: Cho hàm số $y=x^3-3x$. Giá trị cực tiểu là:&#10;A. 2&#10;B. -2&#10;C. 0&#10;D. 1&#10;Đáp án: B" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-mono"></textarea>
           </div>
-          <button onclick="parseAndImportPastedQuestions()" class="mt-4 w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl text-sm transition">
+          <button onclick="parseAndImportPastedQuestions()" class="mt-3 w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl text-xs transition">
             📥 Nhận Diện & Thêm Vào Ngân Hàng
           </button>
         </div>
       </div>
 
-      <!-- Danh Sách Ngân Hàng Câu Hỏi -->
-      <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+      <!-- Danh sách câu hỏi -->
+      <div class="bg-slate-800 border border-slate-700 rounded-3xl p-6">
         <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-700">
           <div>
-            <h3 class="text-lg font-bold text-white">Ngân Hàng Câu Hỏi (<span id="total-bank-count">0</span> câu)</h3>
-            <p class="text-xs text-slate-400">Tích chọn các câu hỏi sẽ đưa vào bộ đề thi đấu</p>
+            <h3 class="text-base font-bold text-white">Ngân Hàng Câu Hỏi (<span id="total-bank-count">0</span> câu)</h3>
+            <p class="text-xs text-slate-400">Tích chọn các câu hỏi sẽ đưa vào trận đấu</p>
           </div>
-          <div class="flex space-x-2">
-            <button onclick="selectAllQuestions(true)" class="text-xs text-indigo-400 hover:underline">Chọn tất cả</button>
+          <div class="flex space-x-2 text-xs">
+            <button onclick="selectAllQuestions(true)" class="text-indigo-400 hover:underline">Chọn hết</button>
             <span class="text-slate-600">|</span>
-            <button onclick="clearQuestionBank()" class="text-xs text-rose-400 hover:underline">Xóa tất cả</button>
+            <button onclick="clearQuestionBank()" class="text-rose-400 hover:underline">Xóa hết</button>
           </div>
         </div>
-        <div id="bank-list" class="space-y-4 max-h-96 overflow-y-auto pr-2"></div>
+        <div id="bank-list" class="space-y-3 max-h-96 overflow-y-auto pr-1"></div>
       </div>
     </section>
 
-    <!-- TAB 3: MÀN HÌNH HỌC SINH (TEST HOẶC DÀNH CHO ĐIỆN THOẠI) -->
-    <section id="view-student" class="hidden">
-      <div class="max-w-md mx-auto bg-slate-800 border border-slate-700 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-        <div class="flex items-center justify-between pb-4 border-b border-slate-700 mb-6">
+    <!-- ==================== TAB 3: MÀN HÌNH HỌC SINH (MOBILE) ==================== -->
+    <section id="view-student" class="space-y-4">
+      <div class="max-w-md mx-auto bg-slate-800 border border-slate-700 rounded-3xl p-5 md:p-6 shadow-2xl relative overflow-hidden">
+        
+        <div class="flex items-center justify-between pb-3 border-b border-slate-700 mb-5">
           <div>
-            <div class="text-xs text-slate-400">Thí sinh: <span id="stu-display-name" class="font-bold text-white">Chưa vào</span></div>
+            <div class="text-[11px] text-slate-400">Thí sinh: <span id="stu-display-name" class="font-bold text-white">Chưa vào</span></div>
             <div class="text-xs text-indigo-400 font-bold">Điểm số: <span id="stu-score">0</span> pts</div>
           </div>
-          <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">Online</span>
         </div>
 
-        <!-- Trạng thái: Nhập tên & PIN -->
+        <!-- Bước 1: Nhập tên & PIN -->
         <div id="stu-login-view" class="space-y-4">
-          <div class="text-center py-4">
-            <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 border border-indigo-500/30">
+          <div class="text-center py-2">
+            <div class="w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-2 border border-indigo-500/30">
               ✏️
             </div>
-            <h3 class="text-lg font-bold text-white">Tham Gia Lớp Học</h3>
+            <h3 class="text-base font-bold text-white">Tham Gia Lớp Học</h3>
             <p class="text-xs text-slate-400">Nhập Họ tên để bắt đầu tính điểm</p>
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-400 mb-1">Mã PIN phòng:</label>
-            <input type="text" id="stu-input-pin" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center text-xl font-bold tracking-widest text-amber-400 font-mono">
+            <input type="text" id="stu-input-pin" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-center text-xl font-bold tracking-widest text-amber-400 font-mono">
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-400 mb-1">Họ và tên của em:</label>
-            <input type="text" id="stu-input-name" placeholder="Ví dụ: Nguyễn Văn An - 11A1" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white">
+            <input type="text" id="stu-input-name" placeholder="Ví dụ: Nguyễn Văn An - 11A1" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500">
           </div>
-          <button onclick="studentJoinRoom()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl transition">
+          <button onclick="studentJoinRoom()" class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold py-3.5 rounded-xl text-sm transition">
             Vào Phòng Thi Đấu
           </button>
         </div>
 
-        <!-- Trạng thái: Chờ bắt đầu -->
-        <div id="stu-waiting-view" class="hidden text-center py-12 space-y-4">
+        <!-- Bước 2: Chờ bắt đầu -->
+        <div id="stu-waiting-view" class="hidden text-center py-12 space-y-3">
           <div class="inline-block animate-spin text-4xl mb-2">⏳</div>
-          <h3 class="text-lg font-bold text-white">Đã sẵn sàng trong phòng!</h3>
+          <h3 class="text-base font-bold text-white">Đã sẵn sàng trong phòng!</h3>
           <p class="text-xs text-slate-400">Hãy chú ý màn hình máy chiếu của Thầy. Trò chơi sẽ bắt đầu trong giây lát...</p>
         </div>
 
-        <!-- Trạng thái: Chọn phương án -->
+        <!-- Bước 3: Bấm chọn đáp án -->
         <div id="stu-answering-view" class="hidden space-y-4">
-          <div class="text-center mb-4">
-            <span class="text-xs uppercase tracking-wider text-slate-400">Chọn phương án đúng</span>
-            <div id="stu-q-timer" class="text-xl font-bold text-amber-400">20s</div>
+          <div class="text-center mb-2">
+            <span class="text-[11px] uppercase tracking-wider text-slate-400">Chọn phương án đúng</span>
+            <div id="stu-q-timer" class="text-2xl font-black text-amber-400">20s</div>
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <button onclick="studentSubmitAnswer('A')" class="h-28 bg-rose-600 hover:bg-rose-500 text-white font-black text-2xl rounded-2xl shadow-lg active:scale-95 transition flex flex-col items-center justify-center">
+            <button onclick="studentSubmitAnswer('A')" class="h-28 bg-rose-600 active:scale-95 text-white font-black text-2xl rounded-2xl shadow-lg transition flex flex-col items-center justify-center">
               <span>▲</span>
-              <span class="text-base font-bold mt-1">A</span>
+              <span class="text-sm font-bold mt-1">A</span>
             </button>
-            <button onclick="studentSubmitAnswer('B')" class="h-28 bg-blue-600 hover:bg-blue-500 text-white font-black text-2xl rounded-2xl shadow-lg active:scale-95 transition flex flex-col items-center justify-center">
+            <button onclick="studentSubmitAnswer('B')" class="h-28 bg-blue-600 active:scale-95 text-white font-black text-2xl rounded-2xl shadow-lg transition flex flex-col items-center justify-center">
               <span>◆</span>
-              <span class="text-base font-bold mt-1">B</span>
+              <span class="text-sm font-bold mt-1">B</span>
             </button>
-            <button onclick="studentSubmitAnswer('C')" class="h-28 bg-amber-600 hover:bg-amber-500 text-white font-black text-2xl rounded-2xl shadow-lg active:scale-95 transition flex flex-col items-center justify-center">
+            <button onclick="studentSubmitAnswer('C')" class="h-28 bg-amber-600 active:scale-95 text-white font-black text-2xl rounded-2xl shadow-lg transition flex flex-col items-center justify-center">
               <span>●</span>
-              <span class="text-base font-bold mt-1">C</span>
+              <span class="text-sm font-bold mt-1">C</span>
             </button>
-            <button onclick="studentSubmitAnswer('D')" class="h-28 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-2xl rounded-2xl shadow-lg active:scale-95 transition flex flex-col items-center justify-center">
+            <button onclick="studentSubmitAnswer('D')" class="h-28 bg-emerald-600 active:scale-95 text-white font-black text-2xl rounded-2xl shadow-lg transition flex flex-col items-center justify-center">
               <span>■</span>
-              <span class="text-base font-bold mt-1">D</span>
+              <span class="text-sm font-bold mt-1">D</span>
             </button>
           </div>
         </div>
 
-        <!-- Trạng thái: Đã gửi bài -->
+        <!-- Bước 4: Đã gửi bài -->
         <div id="stu-submitted-view" class="hidden text-center py-12 space-y-3">
-          <div class="text-4xl text-emerald-400">✓</div>
-          <h3 class="text-lg font-bold text-white">Đã ghi nhận câu trả lời!</h3>
-          <p class="text-xs text-slate-400">Quan sát màn hình lớn để xem đáp án chính xác và điểm thưởng tốc độ.</p>
+          <div class="text-4xl text-emerald-400 animate-bounce">✓</div>
+          <h3 class="text-base font-bold text-white">Đã ghi nhận phương án!</h3>
+          <p class="text-xs text-slate-400">Quan sát màn hình máy chiếu để xem kết quả và điểm tốc độ.</p>
         </div>
       </div>
     </section>
@@ -408,82 +416,212 @@
       ]
     };
 
+    // Kênh mạng thời gian thực
+    let mqttClient = null;
     const bus = new BroadcastChannel("mathquiz_realtime_channel");
+    let myStudentData = { id: 'stu_' + Math.random().toString(36).substr(2, 6), name: '', score: 0, hasAnswered: false, roomPin: '' };
 
     window.addEventListener('DOMContentLoaded', () => {
       if (state.apiKey) document.getElementById('gemini-key').value = state.apiKey;
       
-      // Kiểm tra xem có đang mở từ ổ đĩa file:/// hay không
+      // Kiểm tra file:///
       if (window.location.protocol === 'file:') {
         document.getElementById('local-file-warning').classList.remove('hidden');
-        if (state.overrideBaseUrl) {
-          document.getElementById('override-url-input').value = state.overrideBaseUrl;
-        }
+        if (state.overrideBaseUrl) document.getElementById('override-url-input').value = state.overrideBaseUrl;
       }
 
-      initHostRoom();
-      renderBankList();
-      renderMath();
+      // Khởi tạo MQTT Đám mây
+      initMqtt();
 
-      // Kiểm tra nếu là học sinh quét mã QR truy cập
+      // Kiểm tra xem có phải học sinh quét QR vào phòng không
       const urlParams = new URLSearchParams(window.location.search);
       const pinParam = urlParams.get('pin');
       const roleParam = urlParams.get('role');
+
       if (pinParam || roleParam === 'student') {
+        // Nếu là học sinh quét mã QR: Chuyển thẳng sang giao diện học sinh
         switchTab('student');
-        if (pinParam) document.getElementById('stu-input-pin').value = pinParam;
+        if (pinParam) {
+          const pinInput = document.getElementById('stu-input-pin');
+          pinInput.value = pinParam;
+          pinInput.readOnly = true; // Khóa không cho sửa nhầm PIN
+          pinInput.classList.add('bg-slate-800', 'cursor-not-allowed');
+          myStudentData.roomPin = pinParam;
+        }
+      } else {
+        // Mặc định là máy chiếu Host
+        switchTab('host');
+        initHostRoom();
+        renderBankList();
       }
 
-      bus.onmessage = (event) => {
-        handleBusMessage(event.data);
-      };
+      renderMath();
+
+      // Lắng nghe bus nội bộ cùng máy
+      bus.onmessage = (event) => handleIncomingMessage(event.data);
     });
 
-    function applyOverrideUrl() {
-      const val = document.getElementById('override-url-input').value.trim();
-      if (!val) return alert("Vui lòng nhập đường dẫn web hợp lệ!");
-      state.overrideBaseUrl = val;
-      localStorage.setItem('MATHQUIZ_BASE_URL', val);
-      initHostRoom();
-      alert("Đã cập nhật mã QR theo đường dẫn Web mới thành công!");
-    }
-
-    function renderMath() {
-      if (window.renderMathInElement) {
-        renderMathInElement(document.body, {
-          delimiters: [
-            { left: '$$', right: '$$', display: true },
-            { left: '$', right: '$', display: false }
-          ],
-          throwOnError: false
+    // --- KẾT NỐI REALTIME MQTT QUA INTERNET ---
+    function initMqtt() {
+      try {
+        const broker = 'wss://broker.emqx.io:8084/mqtt';
+        mqttClient = mqtt.connect(broker, {
+          clientId: 'mq_' + Math.random().toString(16).substr(2, 8),
+          clean: true,
+          connectTimeout: 5000,
+          reconnectPeriod: 3000
         });
+
+        mqttClient.on('connect', () => {
+          document.getElementById('cloud-badge').className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1";
+          document.getElementById('cloud-badge').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Đám mây Online</span>';
+          
+          // Đăng ký kênh phòng của Host
+          if (state.roomPin) {
+            mqttClient.subscribe(`mathquiz/v1/room_${state.roomPin}/#`);
+          }
+        });
+
+        mqttClient.on('message', (topic, payload) => {
+          try {
+            const data = JSON.parse(payload.toString());
+            handleIncomingMessage(data);
+          } catch(e) {}
+        });
+
+        mqttClient.on('error', () => {
+          document.getElementById('cloud-badge').className = "px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-950 text-amber-400 border border-amber-800 flex items-center space-x-1";
+          document.getElementById('cloud-badge').innerHTML = '<span>🟠 Chế độ Nội Bộ</span>';
+        });
+      } catch (err) {
+        console.warn("MQTT offline, fallback BroadcastChannel");
       }
     }
 
-    function switchTab(tabId) {
-      ['host', 'bank', 'student'].forEach(t => {
-        document.getElementById(`view-${t}`).classList.add('hidden');
-        document.getElementById(`tab-${t}`).classList.remove('bg-indigo-600', 'text-white', 'shadow');
-        document.getElementById(`tab-${t}`).classList.add('text-slate-400');
+    function broadcastMsg(msg) {
+      // Gửi qua mạng Internet
+      if (mqttClient && mqttClient.connected) {
+        const targetPin = msg.roomPin || state.roomPin || myStudentData.roomPin;
+        if (targetPin) {
+          mqttClient.publish(`mathquiz/v1/room_${targetPin}/data`, JSON.stringify(msg));
+        }
+      }
+      // Gửi nội bộ cùng máy
+      bus.postMessage(msg);
+    }
+
+    // --- XỬ LÝ ĐỒNG BỘ DỮ LIỆU ---
+    function handleIncomingMessage(msg) {
+      if (!msg || !msg.type) return;
+
+      // 1. Phía HOST nhận tín hiệu học sinh vào phòng
+      if (msg.type === 'STUDENT_JOIN') {
+        const currentPin = state.roomPin;
+        if (msg.roomPin === currentPin) {
+          if (!state.students.find(s => s.name === msg.student.name)) {
+            state.students.push(msg.student);
+            updateStudentLobbyUI();
+            showToast(`Học sinh "${msg.student.name}" đã vào phòng!`, "success");
+          }
+        }
+      }
+
+      // 2. Phía HOST nhận câu trả lời của học sinh
+      else if (msg.type === 'STUDENT_ANSWER') {
+        const target = state.students.find(s => s.name === msg.studentName);
+        if (target) {
+          target.answeredCurrent = true;
+          if (msg.isCorrect) {
+            target.score = (target.score || 0) + msg.points;
+            target.correctCount = (target.correctCount || 0) + 1;
+          }
+          updateAnsweredStats();
+        }
+      }
+
+      // 3. Phía HỌC SINH nhận lệnh bắt đầu trận đấu hoặc câu hỏi mới
+      else if (msg.type === 'GAME_STARTED' || msg.type === 'NEW_QUESTION') {
+        myStudentData.hasAnswered = false;
+        document.getElementById('stu-waiting-view').classList.add('hidden');
+        document.getElementById('stu-submitted-view').classList.add('hidden');
+        document.getElementById('stu-answering-view').classList.remove('hidden');
+      }
+
+      // 4. Phía HỌC SINH cập nhật đồng hồ đếm ngược
+      else if (msg.type === 'TIMER_TICK') {
+        const tBox = document.getElementById('stu-q-timer');
+        if (tBox) tBox.innerText = `${msg.timer}s`;
+      }
+    }
+
+    // --- LOGIC HỌC SINH (SỬA TRIỆT ĐỂ LỖI PIN) ---
+    function studentJoinRoom() {
+      const pin = document.getElementById('stu-input-pin').value.trim();
+      const name = document.getElementById('stu-input-name').value.trim();
+
+      if (!name) {
+        showToast("Vui lòng nhập họ và tên của em!", "error");
+        return;
+      }
+      if (!pin || pin.length < 5) {
+        showToast("Vui lòng nhập mã PIN hợp lệ!", "error");
+        return;
+      }
+
+      myStudentData.name = name;
+      myStudentData.roomPin = pin;
+      document.getElementById('stu-display-name').innerText = name;
+      document.getElementById('stu-login-view').classList.add('hidden');
+      document.getElementById('stu-waiting-view').classList.remove('hidden');
+
+      // Đăng ký kênh phòng theo PIN của Thầy
+      if (mqttClient && mqttClient.connected) {
+        mqttClient.subscribe(`mathquiz/v1/room_${pin}/#`);
+      }
+
+      // Phát tín hiệu tham gia lên máy chiếu của Thầy
+      broadcastMsg({
+        type: 'STUDENT_JOIN',
+        roomPin: pin,
+        student: { id: myStudentData.id, name: name, score: 0, correctCount: 0 }
       });
-      document.getElementById(`view-${tabId}`).classList.remove('hidden');
-      document.getElementById(`tab-${tabId}`).classList.add('bg-indigo-600', 'text-white', 'shadow');
-      document.getElementById(`tab-${tabId}`).classList.remove('text-slate-400');
-      renderMath();
+
+      showToast("Đã vào phòng thi đấu!", "success");
+    }
+
+    function studentSubmitAnswer(chosen) {
+      if (myStudentData.hasAnswered) return;
+      myStudentData.hasAnswered = true;
+
+      const currentQ = state.activeQuiz[state.currentQuestionIndex];
+      const isCorrect = currentQ && currentQ.correct === chosen;
+      const pointsEarned = isCorrect ? Math.round(500 + (state.timer / 20) * 500) : 0;
+
+      if (isCorrect) myStudentData.score += pointsEarned;
+      document.getElementById('stu-score').innerText = myStudentData.score;
+
+      document.getElementById('stu-answering-view').classList.add('hidden');
+      document.getElementById('stu-submitted-view').classList.remove('hidden');
+
+      broadcastMsg({
+        type: 'STUDENT_ANSWER',
+        roomPin: myStudentData.roomPin,
+        studentName: myStudentData.name,
+        isCorrect: isCorrect,
+        points: pointsEarned
+      });
     }
 
     // --- PHÒNG CHIẾU (HOST & QR) ---
     function initHostRoom() {
       document.getElementById('display-pin').innerText = state.roomPin;
-      document.getElementById('stu-input-pin').value = state.roomPin;
 
-      // Xác định URL chuẩn cho học sinh quét
       let baseUrl = state.overrideBaseUrl;
       if (!baseUrl) {
         if (window.location.protocol !== 'file:') {
           baseUrl = window.location.origin + window.location.pathname;
         } else {
-          baseUrl = "http://mathquiz.live"; // Fallback nếu mở ổ đĩa
+          baseUrl = "http://mathquiz.live";
         }
       }
 
@@ -495,15 +633,13 @@
       try {
         new QRCode(qrContainer, {
           text: joinUrl,
-          width: 170,
-          height: 170,
+          width: 180,
+          height: 180,
           colorDark: "#0f172a",
           colorLight: "#ffffff",
           correctLevel: QRCode.CorrectLevel.M
         });
-      } catch (e) {
-        console.error("Lỗi tạo QR:", e);
-      }
+      } catch (e) {}
     }
 
     function updateStudentLobbyUI() {
@@ -512,7 +648,7 @@
       document.getElementById('btn-start').disabled = state.students.length === 0;
 
       if (state.students.length === 0) {
-        container.innerHTML = `<div class="text-slate-500 text-sm italic m-auto py-8">Đang chờ học sinh quét mã vào phòng...</div>`;
+        container.innerHTML = `<div class="text-slate-500 text-sm italic m-auto py-10">Đang chờ học sinh quét mã vào phòng...</div>`;
         return;
       }
 
@@ -527,7 +663,7 @@
     function startGame() {
       state.activeQuiz = state.questionBank.filter(q => q.selected);
       if (state.activeQuiz.length === 0) {
-        alert("Vui lòng chọn ít nhất 1 câu hỏi từ Ngân hàng đề!");
+        showToast("Vui lòng chọn ít nhất 1 câu hỏi từ Ngân hàng đề!", "error");
         switchTab('bank');
         return;
       }
@@ -536,7 +672,7 @@
       document.getElementById('host-lobby').classList.add('hidden');
       document.getElementById('host-gameplay').classList.remove('hidden');
 
-      bus.postMessage({ type: 'GAME_STARTED' });
+      broadcastMsg({ type: 'GAME_STARTED', roomPin: state.roomPin });
       loadQuestion(state.currentQuestionIndex);
     }
 
@@ -562,7 +698,7 @@
       grid.innerHTML = q.options.map((opt, i) => `
         <div class="p-4 rounded-xl border ${colors[i].bg} flex items-center space-x-3 math-content">
           <span class="${colors[i].text} text-white font-black text-sm px-2.5 py-1 rounded-lg">${colors[i].tag}</span>
-          <span class="text-white font-medium text-lg">${opt}</span>
+          <span class="text-white font-medium text-base md:text-lg">${opt}</span>
         </div>
       `).join('');
 
@@ -575,13 +711,13 @@
       state.timerInterval = setInterval(() => {
         state.timer--;
         document.getElementById('timer-box').innerText = state.timer;
-        bus.postMessage({ type: 'TIMER_TICK', timer: state.timer });
+        broadcastMsg({ type: 'TIMER_TICK', timer: state.timer, roomPin: state.roomPin });
         if (state.timer <= 0) {
           clearInterval(state.timerInterval);
         }
       }, 1000);
 
-      bus.postMessage({ type: 'NEW_QUESTION', questionIndex: index });
+      broadcastMsg({ type: 'NEW_QUESTION', questionIndex: index, roomPin: state.roomPin });
       setTimeout(renderMath, 50);
     }
 
@@ -631,7 +767,7 @@
         `;
       }).join('');
 
-      confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+      confetti({ particleCount: 130, spread: 80, origin: { y: 0.6 } });
     }
 
     function exportToExcel() {
@@ -665,17 +801,14 @@
     // --- GEMINI AI & DÁN ĐỀ ---
     function saveApiKey() {
       const key = document.getElementById('gemini-key').value.trim();
-      if (!key) return alert("Vui lòng nhập API Key!");
+      if (!key) return showToast("Vui lòng nhập API Key!", "error");
       state.apiKey = key;
       localStorage.setItem('GEMINI_API_KEY', key);
-      alert("Đã lưu API Key thành công!");
+      showToast("Đã lưu API Key thành công!", "success");
     }
 
     async function generateQuestionsWithAI() {
-      if (!state.apiKey) {
-        alert("Vui lòng nhập Gemini API Key ở ô phía trên trước!");
-        return;
-      }
+      if (!state.apiKey) return showToast("Vui lòng nhập Gemini API Key trước!", "error");
 
       const topic = document.getElementById('ai-topic').value.trim();
       const level = document.getElementById('ai-level').value;
@@ -683,16 +816,16 @@
       const btn = document.getElementById('btn-ai-gen');
 
       btn.disabled = true;
-      btn.innerHTML = `<span>⏳ Đang sinh đề Toán qua AI...</span>`;
+      btn.innerText = "⏳ Đang tạo đề Toán...";
 
-      const promptText = `Bạn là chuyên gia ra đề thi Toán THPT chuẩn Chương trình GDPT 2018. 
-Hãy tạo ${count} câu hỏi trắc nghiệm Toán theo chủ đề: "${topic}". Mức độ yêu cầu: "${level}".
+      const promptText = `Bạn là chuyên gia ra đề thi Toán THPT chuẩn GDPT 2018. 
+Hãy tạo ${count} câu hỏi trắc nghiệm Toán theo chủ đề: "${topic}". Mức độ: "${level}".
 Yêu cầu bắt buộc:
-1. Mọi công thức Toán phải dùng định dạng LaTeX đặt trong dấu $...$ (ví dụ: $y = x^2$, $\\frac{a}{b}$).
-2. Trả về DUY NHẤT một mảng JSON (không có markdown giải thích thừa) theo cấu trúc:
+1. Mọi công thức Toán phải dùng LaTeX trong dấu $...$ (ví dụ: $y = x^2$, $\\frac{a}{b}$).
+2. Trả về DUY NHẤT một mảng JSON:
 [
   {
-    "question": "Nội dung câu hỏi...",
+    "question": "Nội dung...",
     "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
     "correct": "A",
     "level": "${level}"
@@ -705,10 +838,8 @@ Yêu cầu bắt buộc:
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
         });
-
         const data = await response.json();
-        let rawText = data.candidates[0].content.parts[0].text;
-        rawText = rawText.replace(/```json|```/g, '').trim();
+        let rawText = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
         const generated = JSON.parse(rawText);
 
         generated.forEach(q => {
@@ -724,18 +855,18 @@ Yêu cầu bắt buộc:
 
         renderBankList();
         renderMath();
-        alert(`Đã tạo thành công ${generated.length} câu hỏi!`);
+        showToast(`Đã thêm ${generated.length} câu hỏi vào ngân hàng!`, "success");
       } catch (err) {
-        alert("Lỗi khi gọi AI: " + err.message);
+        showToast("Lỗi khi gọi AI: " + err.message, "error");
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<span>✨ Khởi Tạo Đề Bằng Gemini</span>`;
+        btn.innerText = "✨ Khởi Tạo Đề Bằng Gemini";
       }
     }
 
     function parseAndImportPastedQuestions() {
       const text = document.getElementById('paste-input').value.trim();
-      if (!text) return alert("Vui lòng dán nội dung đề bài!");
+      if (!text) return showToast("Vui lòng dán đề bài!", "error");
 
       const blocks = text.split(/(?=Câu\s+\d+[:.])/i);
       let count = 0;
@@ -771,9 +902,9 @@ Yêu cầu bắt buộc:
         document.getElementById('paste-input').value = '';
         renderBankList();
         renderMath();
-        alert(`Đã nhận diện và thêm thành công ${count} câu hỏi!`);
+        showToast(`Đã nhận diện ${count} câu hỏi!`, "success");
       } else {
-        alert("Không thể bóc tách đề. Hãy kiểm tra định dạng Câu 1:... A.... B.... C.... D.... Đáp án: A");
+        showToast("Định dạng chưa đúng (Câu 1:... A... B... C... D... Đáp án: A)", "error");
       }
     }
 
@@ -782,21 +913,21 @@ Yêu cầu bắt buộc:
       document.getElementById('total-bank-count').innerText = state.questionBank.length;
 
       if (state.questionBank.length === 0) {
-        list.innerHTML = `<div class="text-slate-500 text-sm italic py-4 text-center">Ngân hàng đang trống!</div>`;
+        list.innerHTML = `<div class="text-slate-500 text-xs italic py-4 text-center">Ngân hàng đang trống!</div>`;
         return;
       }
 
       list.innerHTML = state.questionBank.map((q, idx) => `
-        <div class="p-4 bg-slate-900/70 border border-slate-700/80 rounded-xl flex items-start space-x-3">
-          <input type="checkbox" ${q.selected ? 'checked' : ''} onchange="toggleSelectQuestion(${q.id})" class="mt-1.5 w-4 h-4 rounded text-indigo-600 bg-slate-800 border-slate-600">
+        <div class="p-3 bg-slate-900/70 border border-slate-700/80 rounded-xl flex items-start space-x-2.5">
+          <input type="checkbox" ${q.selected ? 'checked' : ''} onchange="toggleSelectQuestion(${q.id})" class="mt-1 w-4 h-4 rounded text-indigo-600 bg-slate-800 border-slate-600">
           <div class="flex-1">
             <div class="flex items-center space-x-2 mb-1">
               <span class="text-xs font-bold text-indigo-400">Câu ${idx + 1}</span>
               <span class="text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded border border-slate-700">${q.level || 'Thông hiểu'}</span>
               <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">Đ/A: ${q.correct}</span>
             </div>
-            <div class="text-sm text-white font-medium mb-2 math-content">${q.question}</div>
-            <div class="grid grid-cols-2 gap-2 text-xs text-slate-300 math-content">
+            <div class="text-xs text-white font-medium mb-1.5 math-content">${q.question}</div>
+            <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300 math-content">
               ${q.options.map(opt => `<div>${opt}</div>`).join('')}
             </div>
           </div>
@@ -810,101 +941,70 @@ Yêu cầu bắt buộc:
       const item = state.questionBank.find(q => q.id === id);
       if (item) item.selected = !item.selected;
     }
-
     function selectAllQuestions(status) {
       state.questionBank.forEach(q => q.selected = status);
       renderBankList();
     }
-
     function clearQuestionBank() {
-      if (confirm("Thầy có chắc chắn muốn xóa toàn bộ ngân hàng câu hỏi?")) {
+      if (confirm("Thầy có chắc muốn xóa hết ngân hàng câu hỏi?")) {
         state.questionBank = [];
         renderBankList();
       }
     }
-
     function deleteQuestion(id) {
       state.questionBank = state.questionBank.filter(q => q.id !== id);
       renderBankList();
     }
 
-    // --- LOGIC HỌC SINH & ĐỒNG BỘ ---
-    let myStudentData = { name: '', score: 0, hasAnswered: false };
-
-    function studentJoinRoom() {
-      const pin = document.getElementById('stu-input-pin').value.trim();
-      const name = document.getElementById('stu-input-name').value.trim();
-
-      if (!name) return alert("Vui lòng nhập tên của em!");
-      if (pin !== state.roomPin) return alert("Mã PIN phòng không chính xác!");
-
-      myStudentData.name = name;
-      document.getElementById('stu-display-name').innerText = name;
-      document.getElementById('stu-login-view').classList.add('hidden');
-      document.getElementById('stu-waiting-view').classList.remove('hidden');
-
-      bus.postMessage({
-        type: 'STUDENT_JOIN',
-        student: { id: Date.now(), name: name, score: 0, correctCount: 0 }
-      });
-    }
-
-    function studentSubmitAnswer(chosen) {
-      if (myStudentData.hasAnswered) return;
-      myStudentData.hasAnswered = true;
-
-      const currentQ = state.activeQuiz[state.currentQuestionIndex];
-      const isCorrect = currentQ && currentQ.correct === chosen;
-      const pointsEarned = isCorrect ? Math.round(500 + (state.timer / 20) * 500) : 0;
-
-      if (isCorrect) myStudentData.score += pointsEarned;
-      document.getElementById('stu-score').innerText = myStudentData.score;
-
-      document.getElementById('stu-answering-view').classList.add('hidden');
-      document.getElementById('stu-submitted-view').classList.remove('hidden');
-
-      bus.postMessage({
-        type: 'STUDENT_ANSWER',
-        studentName: myStudentData.name,
-        isCorrect: isCorrect,
-        points: pointsEarned
-      });
-    }
-
-    function handleBusMessage(msg) {
-      switch (msg.type) {
-        case 'STUDENT_JOIN':
-          if (!state.students.find(s => s.name === msg.student.name)) {
-            state.students.push(msg.student);
-            updateStudentLobbyUI();
-          }
-          break;
-
-        case 'STUDENT_ANSWER':
-          const target = state.students.find(s => s.name === msg.studentName);
-          if (target) {
-            target.answeredCurrent = true;
-            if (msg.isCorrect) {
-              target.score = (target.score || 0) + msg.points;
-              target.correctCount = (target.correctCount || 0) + 1;
-            }
-            updateAnsweredStats();
-          }
-          break;
-
-        case 'GAME_STARTED':
-        case 'NEW_QUESTION':
-          myStudentData.hasAnswered = false;
-          document.getElementById('stu-waiting-view').classList.add('hidden');
-          document.getElementById('stu-submitted-view').classList.add('hidden');
-          document.getElementById('stu-answering-view').classList.remove('hidden');
-          break;
-
-        case 'TIMER_TICK':
-          const tBox = document.getElementById('stu-q-timer');
-          if (tBox) tBox.innerText = `${msg.timer}s`;
-          break;
+    // --- TIỆN ÍCH GIAO DIỆN ---
+    function renderMath() {
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false }
+          ],
+          throwOnError: false
+        });
       }
+    }
+
+    function switchTab(tabId) {
+      ['host', 'bank', 'student'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        const b = document.getElementById(`tab-${t}`);
+        if (b) {
+          b.classList.remove('bg-indigo-600', 'text-white', 'shadow');
+          b.classList.add('text-slate-400');
+        }
+      });
+      document.getElementById(`view-${tabId}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-${tabId}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-indigo-600', 'text-white', 'shadow');
+        activeBtn.classList.remove('text-slate-400');
+      }
+      renderMath();
+    }
+
+    function showToast(text, type = "info") {
+      const t = document.getElementById('toast');
+      t.innerText = text;
+      t.className = `fixed top-16 right-4 z-50 max-w-sm px-4 py-3 rounded-xl shadow-2xl text-xs md:text-sm font-semibold transition-all duration-300 transform translate-y-0 opacity-100 ${
+        type === 'success' ? 'bg-emerald-600 text-white' : type === 'error' ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white'
+      }`;
+      setTimeout(() => {
+        t.className = t.className.replace('translate-y-0 opacity-100', 'translate-y-[-150%] opacity-0');
+      }, 3000);
+    }
+
+    function applyOverrideUrl() {
+      const val = document.getElementById('override-url-input').value.trim();
+      if (!val) return showToast("Vui lòng nhập đường dẫn web hợp lệ!", "error");
+      state.overrideBaseUrl = val;
+      localStorage.setItem('MATHQUIZ_BASE_URL', val);
+      initHostRoom();
+      showToast("Đã cập nhật mã QR theo đường dẫn mới!", "success");
     }
   </script>
 </body>
